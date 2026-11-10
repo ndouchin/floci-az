@@ -10,6 +10,7 @@ import io.floci.az.core.cloud.CloudDefaults;
 import io.floci.az.core.docker.ContainerBuilder;
 import io.floci.az.core.docker.ContainerDetector;
 import io.floci.az.core.docker.ContainerLifecycleManager;
+import io.floci.az.core.docker.CurrentContainerNetworkResolver;
 import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.core.storage.InMemoryStorage;
 import io.floci.az.core.storage.StorageFactory;
@@ -65,12 +66,12 @@ class AksDeleteKeepRunningTest {
         when(config.effectiveBaseUrl()).thenReturn("http://localhost:4577");
         lifecycle = mock(ContainerLifecycleManager.class);
         AksClusterManager containers = new AksClusterManager(mock(ContainerBuilder.class), lifecycle,
-            mock(ContainerDetector.class), mock(PortAllocator.class), config);
+            mock(ContainerDetector.class), mock(CurrentContainerNetworkResolver.class), mock(PortAllocator.class), config);
         handler = new AksHandler(config, containers, factory, CloudDefaults.catalogOnly());
     }
 
     @Test
-    void deletingAClusterRemovesItsContainerAndVolumeEvenWhenClustersAreKeptRunning() {
+    void deletingAClusterRemovesItsContainerAndVolumeEvenWhenClustersAreKeptRunning() throws Exception {
         AzureRequest delete = new AzureRequest("DELETE", "arm", "aks",
             "subscriptions/sub-keep/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/cluster1",
             null, null, Map.of("api-version", "2024-05-01"), null, false);
@@ -78,6 +79,10 @@ class AksDeleteKeepRunningTest {
         Response response = handler.handle(delete);
 
         assertThat(response.getStatus(), is(202));
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (backend.get(KEY).isPresent() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
         verify(lifecycle).stopAndRemove(eq("cid-kept0001"), any());
         verify(lifecycle).removeVolume("floci-az-aks-kept0001");
         assertFalse(backend.get(KEY).isPresent(), "the deleted cluster's record is gone");

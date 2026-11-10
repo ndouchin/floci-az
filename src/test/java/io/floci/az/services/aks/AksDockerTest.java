@@ -1,9 +1,12 @@
 package io.floci.az.services.aks;
 
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.model.Container;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.response.Response;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -13,9 +16,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Base64;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -24,21 +29,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * AKS handler tests with {@code mocked=false} — starts a real k3s container.
+ * AKS with {@code mocked=false}: real k3s containers, driven through the ARM API and checked through the kubeconfig
+ * the API hands out. Skipped when no Docker daemon is reachable.
  *
- * <p>Skipped automatically when Docker is unavailable.
- * k3s can take up to 120 s to reach /livez, so each poll step sleeps 5 s
- * with a 150 s overall timeout.
- *
- * <p>Tests are ordered and share state (cluster created in test 1, verified in 2-4, deleted in 5).
- * {@code @BeforeAll} only does a filesystem check so it is safe to run before Quarkus is ready;
- * the HTTP reset is done inside the first {@code @Test} method.
+ * <p>Tests are ordered and share one cluster: created on 1.35, stopped and started, its server container lost and
+ * restored on the same data volume, upgraded to 1.36, then deleted.
  */
 @QuarkusTest
 @TestProfile(AksDockerTest.RealModeProfile.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@DisplayName("AksHandler — real k3s mode (Docker required)")
+@DisplayName("AksHandler: real k3s mode (Docker required)")
 class AksDockerTest {
 
     public static class RealModeProfile implements QuarkusTestProfile {
@@ -48,135 +49,189 @@ class AksDockerTest {
         }
     }
 
-    private static final String SUB  = "test-sub-aks-docker";
-    private static final String RG   = "test-rg-docker";
+    private static final String SUB = "test-sub-aks-docker";
+    private static final String RG = "test-rg-docker";
     private static final String NAME = "k3s-test-cluster";
-    private static final String BASE =
-            "/subscriptions/" + SUB + "/resourceGroups/" + RG
-            + "/providers/Microsoft.ContainerService";
-    private static final String CLUSTER_PATH = BASE + "/managedClusters/" + NAME;
+    private static final String API = "?api-version=2025-10-01";
+    private static final String CLUSTER_PATH = "/subscriptions/" + SUB + "/resourceGroups/" + RG
+            + "/providers/Microsoft.ContainerService/managedClusters/" + NAME;
+    private static final Duration OPERATION_TIMEOUT = Duration.ofMinutes(5);
 
-    /** Pure filesystem check — safe to run before Quarkus is fully ready. */
+    @Inject
+    DockerClient docker;
+
+    @Inject
+    AksHandler handler;
+
+    private String adminKubeconfig;
+
+    /** Pure filesystem check, safe to run before Quarkus is fully ready. */
     @BeforeAll
     void checkDockerAvailable() {
         boolean dockerAvailable = Files.exists(Paths.get("/var/run/docker.sock"))
                 || System.getenv("DOCKER_HOST") != null;
-        assumeTrue(dockerAvailable, "Docker socket not available — skipping real k3s tests");
+        assumeTrue(dockerAvailable, "Docker socket not available, skipping real k3s tests");
     }
 
     @AfterAll
     void cleanup() {
         try {
-            given().delete(CLUSTER_PATH + "?api-version=2024-04-01");
-        } catch (Exception ignored) {}
+            given().delete(CLUSTER_PATH + API);
+            AksTestPolling.until(Duration.ofMinutes(2), () -> given().get(CLUSTER_PATH + API).statusCode() == 404);
+        } catch (Throwable ignored) {
+            // best effort: a failed test may already have removed the cluster
+        }
     }
 
-    // ── Create cluster ────────────────────────────────────────────────────────
+    private static String pathOf(String url) {
+        URI uri = URI.create(url);
+        return uri.getRawPath() + "?" + uri.getRawQuery();
+    }
+
+    private static void awaitOperation(Response accepted) {
+        String operation = pathOf(accepted.header("Azure-AsyncOperation"));
+        AksTestPolling.until(OPERATION_TIMEOUT, () -> !"InProgress".equals(given().get(operation).path("status")));
+        given().get(operation).then().statusCode(200).body("status", equalTo("Succeeded"));
+    }
+
+    private static void awaitLocation(Response accepted) {
+        String location = pathOf(accepted.header("Location"));
+        AksTestPolling.until(OPERATION_TIMEOUT, () -> given().get(location).statusCode() != 202);
+        given().get(location).then().statusCode(204);
+    }
+
+    private List<Container> containers(String role) {
+        return docker.listContainersCmd().withShowAll(true)
+                .withLabelFilter(Map.of("io.floci.resource-id", NAME, AksClusterManager.ROLE_LABEL, role))
+                .exec();
+    }
+
+    private static String kubeconfig(String operation) {
+        return given().contentType("application/json").post(CLUSTER_PATH + "/" + operation + API)
+                .then().statusCode(200).extract().path("kubeconfigs[0].value");
+    }
+
+    private static String gitVersion(String kubeconfig) throws Exception {
+        return KubeconfigClient.fromBase64(kubeconfig).get("/version").path("gitVersion").asText();
+    }
+
+    private static boolean answers(String kubeconfig) {
+        try {
+            gitVersion(kubeconfig);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     @Test
     @Order(1)
-    @DisplayName("PUT cluster returns 201 with provisioningState=Creating")
-    void createClusterReturns201Creating() {
-        // Reset state before first test (safe here — Quarkus is ready by test time)
+    @DisplayName("PUT is a long-running operation that ends Succeeded on the requested version")
+    void createCluster() {
         given().post("/_admin/reset").then().statusCode(204);
 
-        given()
-            .contentType("application/json")
-            .body("""
+        Response created = given().contentType("application/json").body("""
                 {
                   "location": "eastus",
                   "properties": {
-                    "kubernetesVersion": "1.29",
+                    "kubernetesVersion": "1.35",
                     "dnsPrefix": "k3s-test-dns",
                     "agentPoolProfiles": [
-                      {"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2",
-                       "osType": "Linux", "mode": "System"}
+                      {"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2", "osType": "Linux",
+                       "mode": "System"}
                     ]
                   }
                 }
-                """)
-            .when().put(CLUSTER_PATH + "?api-version=2024-04-01")
-            .then().statusCode(201)
-            .body("name", equalTo(NAME))
-            .body("properties.provisioningState", oneOf("Creating", "Succeeded", "Failed"));
-    }
+                """).put(CLUSTER_PATH + API);
+        created.then().statusCode(201)
+                .body("properties.provisioningState", equalTo("Creating"))
+                .header("Azure-AsyncOperation", containsString("/operations/"));
 
-    // ── Poll until Succeeded ──────────────────────────────────────────────────
+        awaitOperation(created);
+
+        given().get(CLUSTER_PATH + API).then().statusCode(200)
+                .body("type", equalTo("Microsoft.ContainerService/managedClusters"))
+                .body("properties.provisioningState", equalTo("Succeeded"))
+                .body("properties.kubernetesVersion", equalTo("1.35"))
+                .body("properties.currentKubernetesVersion", equalTo("1.35.10"))
+                .body("properties.powerState.code", equalTo("Running"));
+    }
 
     @Test
     @Order(2)
-    @DisplayName("cluster reaches provisioningState=Succeeded within 150 s")
-    void clusterReachesSucceeded() throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 150_000;
-        String state = "Creating";
+    @DisplayName("the admin kubeconfig reaches the API server running the requested version")
+    void adminKubeconfigReachesTheRequestedVersion() throws Exception {
+        adminKubeconfig = kubeconfig("listClusterAdminCredential");
 
-        while (!"Succeeded".equals(state) && !"Failed".equals(state)
-                && System.currentTimeMillis() < deadline) {
-            Thread.sleep(5_000);
-            Response r = given()
-                    .when().get(CLUSTER_PATH + "?api-version=2024-04-01");
-            if (r.statusCode() == 200) {
-                state = r.path("properties.provisioningState");
-            }
-        }
-
-        assumeTrue(!"Failed".equals(state),
-                "k3s container failed to start — Docker may lack privileged-container support");
-        assertEquals("Succeeded", state,
-                "Cluster did not reach Succeeded within 150 s; last state=" + state);
+        assertTrue(gitVersion(adminKubeconfig).startsWith("v1.35.10"), gitVersion(adminKubeconfig));
     }
-
-    // ── Verify ARM shape ──────────────────────────────────────────────────────
 
     @Test
     @Order(3)
-    @DisplayName("GET cluster returns correct ARM shape after Succeeded")
-    void getClusterArmShape() {
-        given()
-            .when().get(CLUSTER_PATH + "?api-version=2024-04-01")
-            .then().statusCode(200)
-            .body("name", equalTo(NAME))
-            .body("type", equalTo("Microsoft.ContainerService/managedClusters"))
-            .body("location", equalTo("eastus"))
-            .body("properties.provisioningState", equalTo("Succeeded"))
-            .body("properties.kubernetesVersion", equalTo("1.29"))
-            .body("id", containsString("/managedClusters/" + NAME));
-    }
+    @DisplayName("stop stops the containers and start brings the same cluster back")
+    void stopAndStart() {
+        Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
+        stopped.then().statusCode(202);
+        awaitLocation(stopped);
+        given().get(CLUSTER_PATH + API).then().body("properties.powerState.code", equalTo("Stopped"));
+        assertFalse(containers("server").isEmpty());
+        assertTrue(containers("server").stream().noneMatch(c -> "running".equals(c.getState())),
+                "the server container is stopped");
 
-    // ── Kubeconfig contains real server URL ───────────────────────────────────
+        Response started = given().post(CLUSTER_PATH + "/start" + API);
+        started.then().statusCode(202);
+        awaitLocation(started);
+        given().get(CLUSTER_PATH + API).then().body("properties.powerState.code", equalTo("Running"));
+        AksTestPolling.until(Duration.ofMinutes(2), () -> answers(adminKubeconfig));
+    }
 
     @Test
     @Order(4)
-    @DisplayName("listClusterAdminCredential returns kubeconfig with real k3s server URL")
-    void adminCredentialHasRealServerUrl() {
-        String encoded = given()
-                .contentType("application/json")
-                .when().post(CLUSTER_PATH + "/listClusterAdminCredential?api-version=2024-04-01")
-                .then().statusCode(200)
-                .body("kubeconfigs[0].name", equalTo("clusterAdmin"))
-                .extract().path("kubeconfigs[0].value");
+    @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
+    void restoreRecreatesALostServerOnItsVolume() {
+        String lost = containers("server").getFirst().getId();
+        docker.removeContainerCmd(lost).withForce(true).exec();
 
-        assertNotNull(encoded, "kubeconfig value must not be null");
-        String kubeconfig = new String(Base64.getDecoder().decode(encoded));
-        assertTrue(kubeconfig.contains("server: https://"),
-                "kubeconfig must contain a server URL; got:\n" + kubeconfig);
-        assertTrue(kubeconfig.contains("certificate-authority-data:")
-                        || kubeconfig.contains("insecure-skip-tls-verify"),
-                "kubeconfig must contain CA data or skip-tls flag");
+        handler.restorePersistedClusters();
+
+        AksTestPolling.until(Duration.ofMinutes(3), () -> !containers("server").isEmpty()
+                && !containers("server").getFirst().getId().equals(lost));
+        AksTestPolling.until(Duration.ofMinutes(3), () -> answers(adminKubeconfig));
     }
-
-    // ── Delete cluster ────────────────────────────────────────────────────────
 
     @Test
     @Order(5)
-    @DisplayName("DELETE cluster returns 202 and subsequent GET returns 404")
-    void deleteCluster() {
-        given()
-            .when().delete(CLUSTER_PATH + "?api-version=2024-04-01")
-            .then().statusCode(202);
+    @DisplayName("changing kubernetesVersion upgrades the server in place, the old kubeconfig keeps working")
+    void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
+        Response upgraded = given().contentType("application/json")
+                .body("{\"location\":\"eastus\",\"properties\":{\"kubernetesVersion\":\"1.36\"}}")
+                .put(CLUSTER_PATH + API);
+        upgraded.then().statusCode(200).body("properties.provisioningState", equalTo("Upgrading"));
 
-        given()
-            .when().get(CLUSTER_PATH + "?api-version=2024-04-01")
-            .then().statusCode(404);
+        awaitOperation(upgraded);
+
+        given().get(CLUSTER_PATH + API).then()
+                .body("properties.currentKubernetesVersion", equalTo("1.36.6"))
+                .body("properties.agentPoolProfiles[0].currentOrchestratorVersion", equalTo("1.36.6"));
+        assertTrue(gitVersion(adminKubeconfig).startsWith("v1.36.6"), gitVersion(adminKubeconfig));
+        given().get(CLUSTER_PATH + "/upgradeProfiles/default" + API).then()
+                .body("properties.controlPlaneProfile.upgrades.kubernetesVersion", contains("1.37.2"));
+    }
+
+    @Test
+    @Order(99)
+    @DisplayName("DELETE removes the containers, volumes and network, then the cluster is not found")
+    void deleteCluster() {
+        Response deleted = given().delete(CLUSTER_PATH + API);
+        deleted.then().statusCode(202);
+        awaitOperation(deleted);
+
+        given().get(CLUSTER_PATH + API).then().statusCode(404);
+        assertTrue(containers("server").isEmpty(), "server container removed");
+        assertTrue(containers("agent").isEmpty(), "agent containers removed");
+        assertTrue(docker.listNetworksCmd().exec().stream()
+                .noneMatch(n -> n.getName().startsWith("floci-aks-") && NAME.equals(
+                        n.getLabels() == null ? null : n.getLabels().get("io.floci.resource-id"))),
+                "cluster network removed");
     }
 }

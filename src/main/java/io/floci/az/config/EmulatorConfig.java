@@ -706,9 +706,22 @@ public interface EmulatorConfig {
         @WithDefault("false")
         boolean mocked();
 
-        /** Docker image for the k3s container. */
-        @WithDefault("rancher/k3s:latest")
-        String defaultImage();
+        /**
+         * Repository of the k3s images. Each supported Kubernetes minor version runs its own pinned tag from this
+         * repository, so a mirror only needs to carry those tags.
+         */
+        @WithDefault("rancher/k3s")
+        String imageRepository();
+
+        /**
+         * One k3s image for every cluster whatever its Kubernetes version. Unset by default, so the version picks
+         * the image; set it to pin a single image, at the cost of the version no longer matching what runs.
+         */
+        Optional<String> defaultImage();
+
+        /** How long a cluster or a node pool may take to become ready before its operation fails. */
+        @WithDefault("300")
+        int readyTimeoutSeconds();
 
         /** Start of the host port range for k3s API servers. */
         @WithDefault("6443")

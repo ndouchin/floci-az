@@ -122,7 +122,8 @@ public class BannerLogger {
         if (config.services().aks().enabled()) {
             String aksInfo = config.services().aks().mocked()
                     ? "mocked  (no k3s)"
-                    : "k3s:" + config.services().aks().defaultImage()
+                    : "k3s:" + config.services().aks().defaultImage().orElse(
+                            config.services().aks().imageRepository() + " (per version)")
                             + "  ports:" + config.services().aks().apiServerBasePort()
                             + "-" + config.services().aks().apiServerMaxPort();
             sb.append(serviceStatusDocker("aks", true, aksInfo));

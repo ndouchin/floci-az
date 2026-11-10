@@ -5,6 +5,7 @@ import io.floci.az.core.docker.ContainerBuilder;
 import io.floci.az.core.docker.ContainerDetector;
 import io.floci.az.core.docker.ContainerLifecycleManager;
 import io.floci.az.core.docker.ContainerSpec;
+import io.floci.az.core.docker.CurrentContainerNetworkResolver;
 import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.core.tls.SidecarCertificates;
 import io.floci.az.services.acr.AcrRegistryManager;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -134,9 +136,10 @@ class SidecarPortReleaseTest {
 
     @Test
     void aksReleasesItsPortWhenTheStartFails() {
-        when(lifecycleManager.createAndStart(any())).thenThrow(new RuntimeException("port is already allocated"));
+        when(lifecycleManager.create(any())).thenReturn("k3s-container");
+        when(lifecycleManager.startCreated(any(), any())).thenThrow(new RuntimeException("port is already allocated"));
 
-        assertThrows(RuntimeException.class, () -> aks().startCluster(cluster()));
+        assertThrows(RuntimeException.class, () -> startAks(aks(), cluster()));
 
         verify(portAllocator).release(HOST_PORT);
     }
@@ -146,21 +149,22 @@ class SidecarPortReleaseTest {
         RuntimeException volumeFailure = new RuntimeException("volume create timed out");
         doThrow(volumeFailure).when(lifecycleManager).ensureVolume(anyString());
 
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> aks().startCluster(cluster()));
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> startAks(aks(), cluster()));
 
         assertSame(volumeFailure, thrown);
-        verify(lifecycleManager, never()).createAndStart(any());
+        verify(lifecycleManager, never()).create(any());
         verify(portAllocator).release(HOST_PORT);
     }
 
     @Test
     void aksReleasesItsPortWhenTheFailedStartCleanupAlsoFails() {
         RuntimeException startFailure = new RuntimeException("port is already allocated");
-        when(lifecycleManager.createAndStart(any())).thenThrow(startFailure);
+        when(lifecycleManager.create(any())).thenReturn("k3s-container");
+        when(lifecycleManager.startCreated(any(), any())).thenThrow(startFailure);
         when(lifecycleManager.volumeExists(anyString())).thenReturn(false);
         doThrow(new RuntimeException("daemon gone")).when(lifecycleManager).removeVolume(anyString());
 
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> aks().startCluster(cluster()));
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> startAks(aks(), cluster()));
 
         assertSame(startFailure, thrown);
         assertEquals(1, thrown.getSuppressed().length);
@@ -169,12 +173,13 @@ class SidecarPortReleaseTest {
 
     @Test
     void aksReleasesItsPortWhenTheClusterIsStopped() {
-        when(lifecycleManager.createAndStart(any())).thenReturn(running("k3s-container"));
+        when(lifecycleManager.create(any())).thenReturn("k3s-container");
+        when(lifecycleManager.startCreated(any(), any())).thenReturn(running("k3s-container"));
         when(config.services().aks().keepRunningOnShutdown()).thenReturn(false);
         AksClusterManager manager = aks();
         ManagedCluster cluster = cluster();
 
-        manager.startCluster(cluster);
+        startAks(manager, cluster);
         manager.stopCluster(cluster);
 
         verify(portAllocator).release(HOST_PORT);
@@ -182,12 +187,13 @@ class SidecarPortReleaseTest {
 
     @Test
     void aksKeepsItsPortWhenTheContainerIsLeftRunning() {
-        when(lifecycleManager.createAndStart(any())).thenReturn(running("k3s-container"));
+        when(lifecycleManager.create(any())).thenReturn("k3s-container");
+        when(lifecycleManager.startCreated(any(), any())).thenReturn(running("k3s-container"));
         when(config.services().aks().keepRunningOnShutdown()).thenReturn(true);
         AksClusterManager manager = aks();
         ManagedCluster cluster = cluster();
 
-        manager.startCluster(cluster);
+        startAks(manager, cluster);
         manager.stopCluster(cluster);
 
         verify(portAllocator, never()).release(anyInt());
@@ -229,7 +235,12 @@ class SidecarPortReleaseTest {
     }
 
     private AksClusterManager aks() {
-        return new AksClusterManager(containerBuilder, lifecycleManager, containerDetector, portAllocator, config);
+        return new AksClusterManager(containerBuilder, lifecycleManager, containerDetector,
+                mock(CurrentContainerNetworkResolver.class), portAllocator, config);
+    }
+
+    private static void startAks(AksClusterManager manager, ManagedCluster cluster) {
+        manager.prepareServer(cluster, "rancher/k3s:test", List.of("server"), Map.of());
     }
 
     private AcrRegistryManager acr() {

@@ -9,6 +9,7 @@ import io.floci.az.core.cloud.CloudDefaults;
 import io.floci.az.core.docker.ContainerBuilder;
 import io.floci.az.core.docker.ContainerDetector;
 import io.floci.az.core.docker.ContainerLifecycleManager;
+import io.floci.az.core.docker.CurrentContainerNetworkResolver;
 import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.core.storage.InMemoryStorage;
 import io.floci.az.core.storage.StorageFactory;
@@ -84,7 +85,7 @@ class AksShadowedDuplicatesTest {
         when(config.services().aks().keepRunningOnShutdown()).thenReturn(true);
         ContainerLifecycleManager lifecycle = mock(ContainerLifecycleManager.class);
         AksClusterManager containers = new AksClusterManager(mock(ContainerBuilder.class), lifecycle,
-            mock(ContainerDetector.class), mock(PortAllocator.class), config);
+            mock(ContainerDetector.class), mock(CurrentContainerNetworkResolver.class), mock(PortAllocator.class), config);
         AksHandler handler = new AksHandler(config, containers, factory, CloudDefaults.catalogOnly());
 
         handler.dropShadowedClusters();
@@ -101,7 +102,7 @@ class AksShadowedDuplicatesTest {
         when(config.services().aks().keepRunningOnShutdown()).thenReturn(true);
         ContainerLifecycleManager lifecycle = mock(ContainerLifecycleManager.class);
         AksClusterManager containers = new AksClusterManager(mock(ContainerBuilder.class), lifecycle,
-            mock(ContainerDetector.class), mock(PortAllocator.class), config);
+            mock(ContainerDetector.class), mock(CurrentContainerNetworkResolver.class), mock(PortAllocator.class), config);
 
         containers.stopCluster(cache("rg", "kept0001"));
 

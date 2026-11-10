@@ -303,10 +303,21 @@ floci-az:
       api-server-base-port: 6443
       api-server-max-port: 7443
       keep-running-on-shutdown: false
+    aro:
+      enabled: true
+      mocked: false         # true = no Docker; clusters are pure ARM state with a synthetic kubeconfig. false = one MicroShift container per cluster
+      image-repository: "quay.io/minc-org/minc"
+      versions: "4.19=4.19.0-okd-scos.17"   # minor=tag; the -arm64/-amd64 suffix follows the Docker daemon
+      base-port: 7600       # host ports for the API server and the router (3 per cluster)
+      max-port: 7699
+      ready-timeout-seconds: 900
+      storage-provisioner-image: "docker.io/rancher/local-path-provisioner:v0.0.37"
+      storage-helper-image: "docker.io/library/busybox:1.37"
+      keep-running-on-shutdown: false
     aci:
       enabled: true
       mocked: true          # true = no Docker; container groups are pure ARM state (Succeeded/Running). false = back groups with real containers (shared-netns pods)
-      base-port: 7500       # host-port range for published group ports (clear of acr 5000-5099, redis 6379-6399, aks 6443-7443)
+      base-port: 7500       # host-port range for published group ports (clear of acr 5000-5099, redis 6379-6399, aks 6443-7443, aro 7600-7699)
       max-port: 7599
     container-apps:
       enabled: true

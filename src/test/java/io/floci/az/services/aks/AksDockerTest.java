@@ -23,6 +23,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -226,8 +228,55 @@ class AksDockerTest {
         assertEquals(3, containers("agent").size());
     }
 
+    private static final String PVC_PATH = "/api/v1/namespaces/default/persistentvolumeclaims";
+
+    private static String phase(KubeconfigClient kube, String path) {
+        try {
+            return kube.get(path).path("status").path("phase").asText();
+        } catch (Exception e) {
+            return "unreadable: " + e.getMessage();
+        }
+    }
+
     @Test
     @Order(4)
+    @DisplayName("the AKS storage classes exist, default is the default, and disk and file claims bind")
+    void storageClassesBind() throws Exception {
+        KubeconfigClient kube = KubeconfigClient.fromBase64(adminKubeconfig);
+        JsonNode classes = kube.get("/apis/storage.k8s.io/v1/storageclasses").path("items");
+        Map<String, JsonNode> byName = new TreeMap<>();
+        classes.forEach(c -> byName.put(c.path("metadata").path("name").asText(), c));
+        assertEquals(Set.of("default", "managed-csi", "managed-csi-premium", "managed-csi-premium-v2",
+                "managed-premium", "azurefile-csi", "azurefile-csi-premium", "azurefile", "azurefile-premium"),
+                byName.keySet());
+        assertEquals("true", byName.get("default").path("metadata").path("annotations")
+                .path("storageclass.kubernetes.io/is-default-class").asText());
+        assertEquals("disk.csi.azure.com", byName.get("managed-csi").path("provisioner").asText());
+        assertEquals("file.csi.azure.com", byName.get("azurefile-csi").path("provisioner").asText());
+
+        assertEquals(201, kube.send("POST", PVC_PATH, """
+                {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"disk-claim"},
+                 "spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"1Gi"}}}}"""));
+        assertEquals(201, kube.send("POST", PVC_PATH, """
+                {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"file-claim"},
+                 "spec":{"accessModes":["ReadWriteMany"],"storageClassName":"azurefile-csi",
+                         "resources":{"requests":{"storage":"1Gi"}}}}"""));
+        assertEquals(201, kube.send("POST", "/api/v1/namespaces/default/pods", """
+                {"apiVersion":"v1","kind":"Pod","metadata":{"name":"disk-writer"},
+                 "spec":{"restartPolicy":"Never","containers":[{"name":"w","image":"%s",
+                   "command":["sh","-c","echo ok > /data/f && cat /data/f"],
+                   "volumeMounts":[{"name":"d","mountPath":"/data"}]}],
+                   "volumes":[{"name":"d","persistentVolumeClaim":{"claimName":"disk-claim"}}]}}"""
+                .formatted(AksStorageManifests.HELPER_IMAGE)));
+
+        AksTestPolling.until(Duration.ofMinutes(3), () -> "Bound".equals(phase(kube, PVC_PATH + "/file-claim")));
+        AksTestPolling.until(Duration.ofMinutes(3), () -> "Succeeded".equals(
+                phase(kube, "/api/v1/namespaces/default/pods/disk-writer")));
+        assertEquals("Bound", phase(kube, PVC_PATH + "/disk-claim"));
+    }
+
+    @Test
+    @Order(5)
     @DisplayName("scaling a pool through the agent pool API removes its highest-index node")
     void scalingAPoolRemovesNodes() throws Exception {
         Response scaled = given().contentType("application/json")
@@ -243,7 +292,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("stop stops the containers and start brings the same cluster back")
     void stopAndStart() {
         Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
@@ -262,7 +311,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
     void restoreRecreatesALostServerOnItsVolume() {
         String lost = containers("server").getFirst().getId();
@@ -276,7 +325,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("changing kubernetesVersion upgrades the server and the nodes, the old kubeconfig keeps working")
     void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
         Response upgraded = given().contentType("application/json")

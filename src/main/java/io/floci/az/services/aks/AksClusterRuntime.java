@@ -33,18 +33,22 @@ final class AksClusterRuntime {
 
     /**
      * k3s server arguments. The server runs no kubelet, so only agent pool nodes register, and reaches the kubelets
-     * through the agents' tunnels. The API certificate must be valid for every host the cluster is addressed by:
-     * {@code localhost} always, plus the Docker daemon's host in published mode.
+     * through the agents' tunnels. k3s's own local-path storage gives way to the AKS storage classes. The API
+     * certificate must be valid for every host the cluster is addressed by: {@code localhost} always, the container
+     * name agents join by, plus the Docker daemon's host in published mode.
      */
     List<String> serverArgs(ManagedCluster cluster) {
         List<String> args = new ArrayList<>(List.of("server", "--disable-agent", "--egress-selector-mode=cluster",
-                "--disable=traefik", "--tls-san=localhost", "--tls-san=" + manager.containerName(cluster)));
+                "--disable=traefik", "--disable=local-storage", "--tls-san=localhost",
+                "--tls-san=" + manager.containerName(cluster)));
         manager.daemonTlsSan().ifPresent(san -> args.add("--tls-san=" + san));
         return args;
     }
 
+    /** Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates. */
     Map<String, String> manifests(ManagedCluster cluster) {
-        return Map.of();
+        Version controlPlane = Version.parse(cluster.getCurrentKubernetesVersion()).orElseGet(versions::defaultVersion);
+        return Map.of(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
     }
 
     List<String> agentArgs(ManagedCluster cluster, AgentPoolProfile pool, String hash, int index,

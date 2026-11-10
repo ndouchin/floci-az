@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.lenient;
@@ -43,8 +44,17 @@ class AksClusterManagerTlsSanTest {
     @Mock
     EmulatorConfig config;
 
+    @Mock
+    EmulatorConfig.DockerConfig dockerConfig;
+
+    /** The SANs the k3s server is started with. */
     private List<String> serverArgs() {
-        return new AksClusterRuntime(manager()).serverArgs(new AksModels.ManagedCluster());
+        lenient().when(config.docker()).thenReturn(dockerConfig);
+        lenient().when(dockerConfig.resourceNamespace()).thenReturn(Optional.empty());
+        AksModels.ManagedCluster cluster = new AksModels.ManagedCluster();
+        cluster.setInstanceId("abc");
+        return new AksClusterRuntime(manager(), new AksVersions("rancher/k3s", Optional.empty()), 5)
+                .serverArgs(cluster).stream().filter(arg -> arg.startsWith("--tls-san=")).toList();
     }
 
     private AksClusterManager manager() {
@@ -53,10 +63,10 @@ class AksClusterManagerTlsSanTest {
     }
 
     @Test
-    @DisplayName("auto mode: localhost only, as before")
+    @DisplayName("auto mode: localhost and the container name agents join by")
     void autoMode() {
         lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(false);
-        assertEquals(List.of("server", "--disable=traefik", "--tls-san=localhost"), serverArgs());
+        assertEquals(List.of("--tls-san=localhost", "--tls-san=floci-az-aks-abc"), serverArgs());
     }
 
     @Test
@@ -64,7 +74,7 @@ class AksClusterManagerTlsSanTest {
     void publishedMode() {
         lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
         lenient().when(lifecycleManager.daemonAddress()).thenReturn("docker");
-        assertEquals(List.of("server", "--disable=traefik", "--tls-san=localhost", "--tls-san=docker"),
+        assertEquals(List.of("--tls-san=localhost", "--tls-san=floci-az-aks-abc", "--tls-san=docker"),
                 serverArgs());
     }
 
@@ -73,7 +83,7 @@ class AksClusterManagerTlsSanTest {
     void publishedLocalDaemon() {
         lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
         lenient().when(lifecycleManager.daemonAddress()).thenReturn("localhost");
-        assertEquals(List.of("server", "--disable=traefik", "--tls-san=localhost"), serverArgs());
+        assertEquals(List.of("--tls-san=localhost", "--tls-san=floci-az-aks-abc"), serverArgs());
     }
 
     @Test
@@ -81,7 +91,7 @@ class AksClusterManagerTlsSanTest {
     void publishedIpv6() {
         lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
         lenient().when(lifecycleManager.daemonAddress()).thenReturn("::1");
-        assertEquals(List.of("server", "--disable=traefik", "--tls-san=localhost", "--tls-san=::1"),
+        assertEquals(List.of("--tls-san=localhost", "--tls-san=floci-az-aks-abc", "--tls-san=::1"),
                 serverArgs());
     }
 }

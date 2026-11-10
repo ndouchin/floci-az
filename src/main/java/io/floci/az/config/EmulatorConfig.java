@@ -723,6 +723,13 @@ public interface EmulatorConfig {
         @WithDefault("300")
         int readyTimeoutSeconds();
 
+        /**
+         * Most node containers a cluster runs, across its agent pools. System pools are served first, then the
+         * others in creation order; pools past the cap get fewer nodes while the API still reports their count.
+         */
+        @WithDefault("5")
+        int maxNodesPerCluster();
+
         /** Start of the host port range for k3s API servers. */
         @WithDefault("6443")
         int apiServerBasePort();

@@ -122,7 +122,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         this.store = ArmResourceStore.create(storageFactory, "aks", ManagedCluster.class, ManagedCluster::armId,
                 key -> true);
         this.reconciler = new AksReconciler(store, clusterManager, versions,
-                new AksClusterRuntime(clusterManager),
+                new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster()),
                 Duration.ofSeconds(Math.max(1, config.services().aks().readyTimeoutSeconds())));
     }
 
@@ -513,6 +513,18 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         }
 
         static PoolRequest parse(String name, JsonNode p) {
+            Map<String, String> labels = p.has("nodeLabels") ? parseTags(p.path("nodeLabels")) : null;
+            List<String> taints = p.has("nodeTaints") ? textList(p.path("nodeTaints")) : null;
+            try {
+                if (labels != null) {
+                    AksNodeLayout.validateLabels(labels);
+                }
+                if (taints != null) {
+                    AksNodeLayout.validateTaints(taints);
+                }
+            } catch (IllegalArgumentException e) {
+                throw new AksRequestException(400, "InvalidParameter", e.getMessage());
+            }
             return new PoolRequest(name,
                     p.hasNonNull("count") ? p.path("count").asInt() : null,
                     textOrNull(p, "vmSize"),
@@ -524,8 +536,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                     p.hasNonNull("enableAutoScaling") ? p.path("enableAutoScaling").asBoolean() : null,
                     p.hasNonNull("minCount") ? p.path("minCount").asInt() : null,
                     p.hasNonNull("maxCount") ? p.path("maxCount").asInt() : null,
-                    p.has("nodeLabels") ? parseTags(p.path("nodeLabels")) : null,
-                    p.has("nodeTaints") ? textList(p.path("nodeTaints")) : null,
+                    labels,
+                    taints,
                     p.has("availabilityZones") ? textList(p.path("availabilityZones")) : null);
         }
     }
@@ -933,11 +945,11 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     private Response putAgentPool(AzureRequest req, ArmResourceId id, String sub, String poolName) {
         JsonNode props = readBody(req.bodyStream()).path("properties");
-        PoolRequest request = PoolRequest.parse(poolName, props);
         boolean mocked = config.services().aks().mocked();
         AtomicReference<Boolean> created = new AtomicReference<>(false);
         ManagedCluster cluster;
         try {
+            PoolRequest request = PoolRequest.parse(poolName, props);
             cluster = store.update(id, current -> {
                 Optional<AgentPoolProfile> existing = current.pool(poolName);
                 created.set(existing.isEmpty());

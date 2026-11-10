@@ -299,6 +299,7 @@ floci-az:
       mocked: false
       image-repository: "rancher/k3s"   # each Kubernetes minor runs its pinned tag; default-image pins one image for all
       ready-timeout-seconds: 300
+      max-nodes-per-cluster: 5          # node containers per cluster; pools past the cap get fewer nodes
       api-server-base-port: 6443
       api-server-max-port: 7443
       keep-running-on-shutdown: false

@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,6 +69,14 @@ class AksLifecycleRealModeTest {
         given().post("/_admin/reset").then().statusCode(204);
         apiReady.set(false);
         when(clusterManager.isApiReady(any())).thenAnswer(inv -> apiReady.get());
+        when(clusterManager.nodeReadiness(any())).thenReturn(new HashMap<>() {
+            @Override
+            public Boolean get(Object node) {
+                return true;
+            }
+        });
+        when(clusterManager.containerName(any())).thenAnswer(inv ->
+                "floci-az-aks-" + inv.<ManagedCluster>getArgument(0).getInstanceId());
         doAnswer(inv -> {
             ManagedCluster cluster = inv.getArgument(0);
             cluster.setContainerId("server-" + cluster.getInstanceId());
@@ -220,6 +229,86 @@ class AksLifecycleRealModeTest {
         AksTestPolling.until(Duration.ofSeconds(10), () -> given().get(BASE + "lro6" + API).statusCode() == 404);
         verify(clusterManager, timeout(5000)).removeCluster(any());
         given().get(pathOf(deleted.header("Azure-AsyncOperation"))).then().body("status", equalTo("Succeeded"));
+    }
+
+    @Test
+    @DisplayName("agent pools become AKS-named nodes, capped at five node containers, System pool first")
+    void agentPoolsBecomeNodes() {
+        apiReady.set(true);
+        Response created = create("pools1", """
+                {"location":"eastus","properties":{"agentPoolProfiles":[
+                  {"name":"user","count":4,"mode":"User","vmSize":"Standard_D4s_v5",
+                   "nodeLabels":{"team":"a"},"nodeTaints":["dedicated=batch:NoSchedule"],
+                   "availabilityZones":["1","2"]},
+                  {"name":"system","count":2,"mode":"System"},
+                  {"name":"empty","count":0,"mode":"User"}]}}
+                """);
+        created.then().statusCode(201);
+        awaitState("pools1", "Succeeded");
+
+        ArgumentCaptor<AksClusterManager.AgentSpec> specs = ArgumentCaptor.forClass(AksClusterManager.AgentSpec.class);
+        verify(clusterManager, atLeast(5)).ensureAgent(any(), any(), specs.capture());
+        List<String> names = specs.getAllValues().stream().map(AksClusterManager.AgentSpec::nodeName).distinct()
+                .toList();
+        assertEquals(5, names.size(), names.toString());
+        assertTrue(names.stream().allMatch(n -> n.matches("aks-(system|user)-\\d{8}-vmss00000[0-9a-z]")), names.toString());
+        assertEquals(2, names.stream().filter(n -> n.startsWith("aks-system-")).count());
+        assertEquals(3, names.stream().filter(n -> n.startsWith("aks-user-")).count());
+
+        AksClusterManager.AgentSpec user = specs.getAllValues().stream()
+                .filter(spec -> spec.nodeName().startsWith("aks-user-") && spec.nodeName().endsWith("000001"))
+                .findFirst().orElseThrow();
+        assertTrue(user.args().contains("--node-label=kubernetes.azure.com/agentpool=user"), user.args().toString());
+        assertTrue(user.args().contains("--node-label=kubernetes.azure.com/mode=user"), user.args().toString());
+        assertTrue(user.args().contains("--node-label=team=a"), user.args().toString());
+        assertTrue(user.args().contains("--node-label=topology.kubernetes.io/zone=eastus-2"), user.args().toString());
+        assertTrue(user.args().contains("--node-taint=dedicated=batch:NoSchedule"), user.args().toString());
+        assertTrue(user.args().stream().anyMatch(a -> a.startsWith("--kubelet-arg=provider-id=azure:///subscriptions/"
+                + SUB + "/resourceGroups/MC_rg-lro_pools1_eastus/providers/Microsoft.Compute/virtualMachineScaleSets"
+                + "/aks-user-") && a.endsWith("-vmss/virtualMachines/1")), user.args().toString());
+        assertEquals(4, user.cpus());
+        assertEquals(16L * 1024 * 1024 * 1024, user.memoryBytes());
+        assertTrue(user.image().endsWith(":v1.36.6-k3s1"), user.image());
+
+        given().get(BASE + "pools1/agentPools/user" + API).then()
+                .body("properties.count", equalTo(4))
+                .body("properties.provisioningState", equalTo("Succeeded"));
+    }
+
+    @Test
+    @DisplayName("scaling a pool down removes its highest-index nodes, deleting a pool removes all of them")
+    void scalingDownAndDeletingRemoveNodes() {
+        apiReady.set(true);
+        create("pools2", "{\"location\":\"eastus\",\"properties\":{\"agentPoolProfiles\":["
+                + "{\"name\":\"system\",\"count\":1,\"mode\":\"System\"}]}}").then().statusCode(201);
+        awaitState("pools2", "Succeeded");
+        given().contentType("application/json").body("{\"properties\":{\"count\":3,\"mode\":\"User\"}}")
+                .put(BASE + "pools2/agentPools/user" + API).then().statusCode(201);
+        awaitState("pools2", "Succeeded");
+
+        given().contentType("application/json").body("{\"properties\":{\"count\":1}}")
+                .put(BASE + "pools2/agentPools/user" + API).then().statusCode(200)
+                .body("properties.provisioningState", equalTo("Scaling"));
+        awaitState("pools2", "Succeeded");
+        ArgumentCaptor<String> removed = ArgumentCaptor.forClass(String.class);
+        verify(clusterManager, atLeast(2)).removeAgent(any(), removed.capture(), org.mockito.ArgumentMatchers.anyBoolean());
+        assertTrue(removed.getAllValues().stream().anyMatch(n -> n.startsWith("aks-user-") && n.endsWith("vmss000002")));
+        assertTrue(removed.getAllValues().stream().anyMatch(n -> n.startsWith("aks-user-") && n.endsWith("vmss000001")));
+
+        given().delete(BASE + "pools2/agentPools/user" + API).then().statusCode(202);
+        awaitState("pools2", "Succeeded");
+        given().get(BASE + "pools2/agentPools/user" + API).then().statusCode(404);
+        verify(clusterManager, atLeast(3)).removeAgent(any(), removed.capture(), org.mockito.ArgumentMatchers.anyBoolean());
+        assertTrue(removed.getAllValues().stream().anyMatch(n -> n.startsWith("aks-user-") && n.endsWith("vmss000000")));
+    }
+
+    @Test
+    @DisplayName("a node label under a reserved prefix is refused")
+    void reservedLabelsAreRefused() {
+        create("pools3", "{\"location\":\"eastus\",\"properties\":{\"agentPoolProfiles\":["
+                + "{\"name\":\"system\",\"count\":1,\"mode\":\"System\","
+                + "\"nodeLabels\":{\"kubernetes.azure.com/mode\":\"user\"}}]}}")
+                .then().statusCode(400).body("error.code", equalTo("InvalidParameter"));
     }
 
     @Test

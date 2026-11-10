@@ -1,5 +1,6 @@
 package io.floci.az.services.aks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import io.quarkus.test.junit.QuarkusTest;
@@ -32,8 +33,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * AKS with {@code mocked=false}: real k3s containers, driven through the ARM API and checked through the kubeconfig
  * the API hands out. Skipped when no Docker daemon is reachable.
  *
- * <p>Tests are ordered and share one cluster: created on 1.35, stopped and started, its server container lost and
- * restored on the same data volume, upgraded to 1.36, then deleted.
+ * <p>Tests are ordered and share one cluster: created on 1.35 with three agent pools, checked node by node, scaled,
+ * stopped and started, its server container lost and restored on the same data volume, upgraded to 1.36, then
+ * deleted.
  */
 @QuarkusTest
 @TestProfile(AksDockerTest.RealModeProfile.class)
@@ -138,7 +140,11 @@ class AksDockerTest {
                     "dnsPrefix": "k3s-test-dns",
                     "agentPoolProfiles": [
                       {"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2", "osType": "Linux",
-                       "mode": "System"}
+                       "mode": "System"},
+                      {"name": "userpool", "count": 2, "vmSize": "Standard_D2s_v5", "mode": "User",
+                       "nodeLabels": {"team": "payments"}, "nodeTaints": ["dedicated=batch:NoSchedule"],
+                       "availabilityZones": ["1", "2"]},
+                      {"name": "zeropool", "count": 0, "vmSize": "Standard_D2s_v5", "mode": "User"}
                     ]
                   }
                 }
@@ -166,8 +172,78 @@ class AksDockerTest {
         assertTrue(gitVersion(adminKubeconfig).startsWith("v1.35.10"), gitVersion(adminKubeconfig));
     }
 
+    private JsonNode nodes() throws Exception {
+        return KubeconfigClient.fromBase64(adminKubeconfig).get("/api/v1/nodes").path("items");
+    }
+
+    private static JsonNode node(JsonNode nodes, String prefix, String suffix) {
+        for (JsonNode node : nodes) {
+            String name = node.path("metadata").path("name").asText();
+            if (name.startsWith(prefix) && name.endsWith(suffix)) {
+                return node;
+            }
+        }
+        throw new AssertionError("no node " + prefix + "*" + suffix + " in " + nodes);
+    }
+
     @Test
     @Order(3)
+    @DisplayName("agent pools are AKS-named nodes with AKS labels, taints and provider IDs; count 0 has none")
+    void agentPoolsAreNodes() throws Exception {
+        JsonNode nodes = nodes();
+        assertEquals(3, nodes.size(), nodes.toString());
+        for (JsonNode node : nodes) {
+            String name = node.path("metadata").path("name").asText();
+            assertTrue(name.matches("aks-(nodepool1|userpool)-\\d{8}-vmss00000[01]"), name);
+            assertTrue(node.path("spec").path("providerID").asText().startsWith("azure:///subscriptions/" + SUB
+                    + "/resourceGroups/MC_" + RG + "_" + NAME + "_eastus/providers/Microsoft.Compute"
+                    + "/virtualMachineScaleSets/"), node.path("spec").path("providerID").asText());
+        }
+        JsonNode system = node(nodes, "aks-nodepool1-", "vmss000000");
+        JsonNode systemLabels = system.path("metadata").path("labels");
+        assertEquals("nodepool1", systemLabels.path("kubernetes.azure.com/agentpool").asText());
+        assertEquals("nodepool1", systemLabels.path("agentpool").asText());
+        assertEquals("system", systemLabels.path("kubernetes.azure.com/mode").asText());
+        assertEquals("agent", systemLabels.path("kubernetes.azure.com/role").asText());
+        assertEquals("MC_" + RG + "_" + NAME + "_eastus", systemLabels.path("kubernetes.azure.com/cluster").asText());
+        assertEquals("Ubuntu", systemLabels.path("kubernetes.azure.com/os-sku").asText());
+        assertEquals("Standard_DS2_v2", systemLabels.path("node.kubernetes.io/instance-type").asText());
+        assertEquals("eastus", systemLabels.path("topology.kubernetes.io/region").asText());
+        assertEquals("0", systemLabels.path("topology.kubernetes.io/zone").asText());
+
+        JsonNode user1 = node(nodes, "aks-userpool-", "vmss000001");
+        JsonNode userLabels = user1.path("metadata").path("labels");
+        assertEquals("user", userLabels.path("kubernetes.azure.com/mode").asText());
+        assertEquals("payments", userLabels.path("team").asText());
+        assertEquals("eastus-2", userLabels.path("topology.kubernetes.io/zone").asText());
+        assertEquals("Standard_D2s_v5", userLabels.path("node.kubernetes.io/instance-type").asText());
+        assertTrue(user1.path("spec").path("taints").toString().contains("\"key\":\"dedicated\""),
+                user1.path("spec").path("taints").toString());
+        assertTrue(user1.path("spec").path("providerID").asText().endsWith("-vmss/virtualMachines/1"));
+        assertTrue(user1.path("status").path("nodeInfo").path("kubeletVersion").asText().startsWith("v1.35.10"));
+
+        assertEquals(1, containers("server").size());
+        assertEquals(3, containers("agent").size());
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("scaling a pool through the agent pool API removes its highest-index node")
+    void scalingAPoolRemovesNodes() throws Exception {
+        Response scaled = given().contentType("application/json")
+                .body("{\"properties\":{\"count\":1}}")
+                .put(CLUSTER_PATH + "/agentPools/userpool" + API);
+        scaled.then().statusCode(200).body("properties.provisioningState", equalTo("Scaling"));
+        awaitOperation(scaled);
+
+        JsonNode nodes = nodes();
+        assertEquals(2, nodes.size(), nodes.toString());
+        node(nodes, "aks-userpool-", "vmss000000");
+        assertEquals(2, containers("agent").size());
+    }
+
+    @Test
+    @Order(5)
     @DisplayName("stop stops the containers and start brings the same cluster back")
     void stopAndStart() {
         Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
@@ -186,7 +262,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(4)
+    @Order(6)
     @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
     void restoreRecreatesALostServerOnItsVolume() {
         String lost = containers("server").getFirst().getId();
@@ -200,8 +276,8 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(5)
-    @DisplayName("changing kubernetesVersion upgrades the server in place, the old kubeconfig keeps working")
+    @Order(7)
+    @DisplayName("changing kubernetesVersion upgrades the server and the nodes, the old kubeconfig keeps working")
     void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
         Response upgraded = given().contentType("application/json")
                 .body("{\"location\":\"eastus\",\"properties\":{\"kubernetesVersion\":\"1.36\"}}")
@@ -214,6 +290,19 @@ class AksDockerTest {
                 .body("properties.currentKubernetesVersion", equalTo("1.36.6"))
                 .body("properties.agentPoolProfiles[0].currentOrchestratorVersion", equalTo("1.36.6"));
         assertTrue(gitVersion(adminKubeconfig).startsWith("v1.36.6"), gitVersion(adminKubeconfig));
+        AksTestPolling.until(Duration.ofMinutes(2), () -> {
+            try {
+                JsonNode nodes = nodes();
+                boolean allUpgraded = nodes.size() == 2;
+                for (JsonNode node : nodes) {
+                    allUpgraded &= node.path("status").path("nodeInfo").path("kubeletVersion").asText()
+                            .startsWith("v1.36.6");
+                }
+                return allUpgraded;
+            } catch (Exception e) {
+                return false;
+            }
+        });
         given().get(CLUSTER_PATH + "/upgradeProfiles/default" + API).then()
                 .body("properties.controlPlaneProfile.upgrades.kubernetesVersion", contains("1.37.2"));
     }

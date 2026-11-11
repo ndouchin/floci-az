@@ -38,7 +38,10 @@ quarkus:
       --initialize-at-run-time=io.floci.az.services.entra.SigningKeyProvider,
       --initialize-at-run-time=io.floci.az.services.entra.SecretHasher,
       --initialize-at-run-time=io.floci.az.services.keyvault.KeyVaultCrypto,
-      --initialize-at-run-time=io.floci.az.services.eventgrid.EventGridService
+      --initialize-at-run-time=io.floci.az.services.eventgrid.EventGridService,
+      --initialize-at-run-time=io.floci.az.services.aro.AroProperties,
+      --initialize-at-run-time=io.floci.az.services.aro.AroHandler,
+      --initialize-at-run-time=io.floci.az.services.aro.AroClusterManager
 
 floci-az:
   port: 4577

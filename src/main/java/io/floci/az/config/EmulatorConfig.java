@@ -752,6 +752,19 @@ public interface EmulatorConfig {
         /** When {@code true}, k3s containers are left running when floci-az shuts down. */
         @WithDefault("false")
         boolean keepRunningOnShutdown();
+
+        /** Microsoft Entra integration and Azure RBAC of the clusters. */
+        AksEntraConfig entra();
+    }
+
+    interface AksEntraConfig {
+        /**
+         * When {@code true}, the Entra {@code clusterUser} kubeconfig appends {@code --authority-host <floci-az HTTPS
+         * base URL>/ --disable-instance-discovery} to kubelogin's arguments, so it signs in at floci-az unedited. Off,
+         * the kubeconfig carries exactly AKS's arguments.
+         */
+        @WithDefault("false")
+        boolean kubeconfigFlociAuthority();
     }
 
     /** Azure Red Hat OpenShift ({@code Microsoft.RedHatOpenShift}): clusters backed by MicroShift containers. */

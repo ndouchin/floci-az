@@ -303,6 +303,8 @@ floci-az:
       api-server-base-port: 6443
       api-server-max-port: 7443
       keep-running-on-shutdown: false
+      entra:
+        kubeconfig-floci-authority: false  # FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY: add --authority-host <floci-az>/ to the Entra user kubeconfig
     aro:
       enabled: true
       mocked: false         # true = no Docker; clusters are pure ARM state with a synthetic kubeconfig. false = one MicroShift container per cluster

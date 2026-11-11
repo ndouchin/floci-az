@@ -7,12 +7,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code aadProfile} and {@code disableLocalAccounts} as the AKS spec and docs define them: the RP fills
@@ -96,5 +101,25 @@ class AksAadProfileTest {
                 .body("error.code", equalTo("BadRequest"));
         given().when().post(BASE + "/managedClusters/aad6/listClusterUserCredential" + API).then().statusCode(200)
                 .body("kubeconfigs[0].name", equalTo("clusterUser"));
+    }
+
+    @Test
+    void anEntraClusterUserCredentialIsAKubeloginExecAndFormatAzureTheAuthProvider() {
+        put("aad7", "{\"aadProfile\": {\"managed\": true}}").statusCode(201);
+        String exec = given().when().post(BASE + "/managedClusters/aad7/listClusterUserCredential" + API)
+                .then().statusCode(200).extract().path("kubeconfigs[0].value");
+        String execYaml = new String(Base64.getDecoder().decode(exec), StandardCharsets.UTF_8);
+        assertTrue(execYaml.contains("command: kubelogin"), execYaml);
+        assertTrue(execYaml.contains("- " + DEFAULT_TENANT), execYaml);
+        assertTrue(execYaml.contains("server: "), execYaml);
+        String azure = given().queryParam("format", "azure")
+                .when().post(BASE + "/managedClusters/aad7/listClusterUserCredential" + API)
+                .then().statusCode(200).extract().path("kubeconfigs[0].value");
+        String azureYaml = new String(Base64.getDecoder().decode(azure), StandardCharsets.UTF_8);
+        assertTrue(azureYaml.contains("name: azure"), azureYaml);
+        assertTrue(azureYaml.contains("apiserver-id: " + AksEntra.SERVER_APP_ID), azureYaml);
+        String admin = given().when().post(BASE + "/managedClusters/aad7/listClusterAdminCredential" + API)
+                .then().statusCode(200).extract().path("kubeconfigs[0].value");
+        assertFalse(new String(Base64.getDecoder().decode(admin), StandardCharsets.UTF_8).contains("kubelogin"));
     }
 }

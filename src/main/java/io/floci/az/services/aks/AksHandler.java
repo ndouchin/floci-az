@@ -244,7 +244,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         String rg = extractResourceGroup(fullPath);
 
         if (tail.matches("managedClusters/[^/]+/listCluster(?:Admin|User)Credential") && "POST".equals(method)) {
-            return handleListCredentials(sub, rg, segment(tail, 1), tail.endsWith("AdminCredential"));
+            return handleListCredentials(req, sub, rg, segment(tail, 1), tail.endsWith("AdminCredential"));
         }
         if (tail.matches("(?i)managedClusters/[^/]+/(?:start|stop)") && "POST".equals(method)) {
             return handlePower(req, sub, rg, segment(tail, 1), segment(tail, 2).equalsIgnoreCase("start"));
@@ -919,7 +919,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      * AKS returns, and the user one too when Entra integration is off ({@code local-accounts.md}: "any attempt to
      * authenticate with user or admin credentials will fail").
      */
-    private Response handleListCredentials(String sub, String rg, String clusterName, boolean admin) {
+    private Response handleListCredentials(AzureRequest req, String sub, String rg, String clusterName,
+                                           boolean admin) {
         Optional<ManagedCluster> found = getCluster(clusterId(sub, rg, clusterName));
         if (found.isEmpty()) {
             return notFound("Managed cluster '" + clusterName + "' not found.");
@@ -931,7 +932,12 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         }
         AksKubeconfig.Role role = admin ? AksKubeconfig.Role.ADMIN : AksKubeconfig.Role.USER;
         String kubeconfig;
-        if (cluster.getCaData() != null && cluster.getClientCertificateData() != null
+        if (!admin && cluster.entraEnabled()) {
+            if (cluster.getCaData() == null && !config.services().aks().mocked()) {
+                return credentialsNotAvailable(cluster);
+            }
+            kubeconfig = entraKubeconfig(req, cluster);
+        } else if (cluster.getCaData() != null && cluster.getClientCertificateData() != null
                 && cluster.getClientKeyData() != null && cluster.getEndpoint() != null) {
             kubeconfig = AksKubeconfig.of(cluster, role);
         } else if (config.services().aks().mocked()) {
@@ -944,6 +950,37 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 "name", role.credentialName(),
                 "value", kubeconfig)));
         return Response.ok(result).type("application/json").build();
+    }
+
+    /**
+     * The Entra {@code clusterUser} kubeconfig: kubelogin exec by default, the legacy auth-provider form for
+     * {@code format=azure}. With {@code aks.entra.kubeconfig-floci-authority} the exec form names floci-az's HTTPS
+     * base URL as authority, so kubelogin signs in here without editing the kubeconfig.
+     */
+    private String entraKubeconfig(AzureRequest req, ManagedCluster cluster) {
+        String tenant = cluster.getAadProfile().getTenantID() != null ? cluster.getAadProfile().getTenantID()
+                : tenantOf(req);
+        String environment = kubeloginEnvironment(req);
+        String format = req.queryParams() == null ? null : req.queryParams().get("format");
+        if ("azure".equalsIgnoreCase(format)) {
+            return AksKubeconfig.entraAuthProvider(cluster, tenant, environment);
+        }
+        String authority = null;
+        if (config.services().aks().entra().kubeconfigFlociAuthority()) {
+            String base = RequestUrls.resolveBaseUrl(req, config);
+            authority = (base.startsWith("http://") ? "https://" + base.substring("http://".length()) : base) + "/";
+        }
+        return AksKubeconfig.entraExec(cluster, tenant, environment, authority);
+    }
+
+    /** kubelogin's {@code --environment} for the request's cloud (go-autorest environment names). */
+    private static String kubeloginEnvironment(AzureRequest req) {
+        String cloud = req.scope() == null || req.scope().cloud() == null ? "" : req.scope().cloud().name();
+        return switch (cloud) {
+            case "AzureUSGovernment" -> "AzureUSGovernmentCloud";
+            case "AzureChinaCloud" -> "AzureChinaCloud";
+            default -> "AzurePublicCloud";
+        };
     }
 
     /**

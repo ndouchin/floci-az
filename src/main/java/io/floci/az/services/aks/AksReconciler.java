@@ -137,10 +137,14 @@ final class AksReconciler {
             manager.updateManifests(cluster, runtime.manifests(cluster));
         }
         manager.extractCredentials(cluster);
+        String jwks = cluster.oidcIssuerEnabled() ? manager.serviceAccountJwks(cluster) : null;
         persist(id, cluster.getInstanceId(), current -> {
             current.setCaData(cluster.getCaData());
             current.setClientCertificateData(cluster.getClientCertificateData());
             current.setClientKeyData(cluster.getClientKeyData());
+            if (jwks != null) {
+                current.setServiceAccountJwks(jwks);
+            }
         });
     }
 

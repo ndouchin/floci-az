@@ -230,15 +230,23 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         return config.services().aks().enabled();
     }
 
+    /**
+     * The ARM provider, and the host of the clusters' OIDC issuers, {@code {region}.oic.prod-aks.azure.com}, for
+     * verifiers whose DNS sends it to floci-az.
+     */
     @Override
     public ServiceRoutes routes() {
         return ServiceRoutes.builder()
                 .provider("Microsoft.ContainerService")
+                .host(AksWorkloadIdentity.ISSUER_HOST_SUFFIX)
                 .build();
     }
 
     @Override
     public Response handle(AzureRequest req) {
+        if (req.host() != null && req.host().endsWith(AksWorkloadIdentity.ISSUER_HOST_SUFFIX)) {
+            return issuerDocument(req);
+        }
         String fullPath = req.resourcePath();
         String method = req.method();
 
@@ -1132,6 +1140,22 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     }
 
     // ── Storage helpers ────────────────────────────────────────────────────────
+
+    /** A cluster's OIDC issuer document, asked for on the AKS issuer host. */
+    private Response issuerDocument(AzureRequest req) {
+        if (!"GET".equals(req.method())) {
+            return methodNotAllowed();
+        }
+        String region = req.host().substring(0, req.host().length() - AksWorkloadIdentity.ISSUER_HOST_SUFFIX.length());
+        return AksOidcIssuers.document(scanAll(), region, req.resourcePath())
+                .map(document -> Response.ok(document).type("application/json").build())
+                .orElseGet(() -> notFound("No OIDC issuer document at " + req.resourcePath()));
+    }
+
+    /** Every cluster. */
+    public List<ManagedCluster> clusters() {
+        return scanAll();
+    }
 
     /** The cluster with {@code instanceId}, which names its containers and its webhook routes. */
     public Optional<ManagedCluster> clusterByInstanceId(String instanceId) {

@@ -348,6 +348,11 @@ public class AksClusterManager {
         LOG.infov("Read the kubeconfig of AKS cluster {0}", cluster.getName());
     }
 
+    /** The JWKS the API server publishes for its service account issuer ({@code /openid/v1/jwks}). */
+    public String serviceAccountJwks(ManagedCluster cluster) {
+        return kubectl(cluster, "get", "--raw", "/openid/v1/jwks").trim();
+    }
+
     /**
      * Runs {@code kubectl} with {@code args} inside the server container.
      *

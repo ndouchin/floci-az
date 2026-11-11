@@ -37,6 +37,8 @@ public class AksModels {
         private Boolean oidcIssuerEnabled;
         /** The issuer URL, generated once with the cluster's OIDC key and kept for good. */
         private String oidcIssuerUrl;
+        /** The JWKS the API server signs service account tokens with, read after it is ready. */
+        private String serviceAccountJwks;
         /** {@code securityProfile.workloadIdentity.enabled}. */
         private Boolean workloadIdentityEnabled;
         private NetworkProfile networkProfile;
@@ -118,6 +120,9 @@ public class AksModels {
 
         public String getOidcIssuerUrl() { return oidcIssuerUrl; }
         public void setOidcIssuerUrl(String oidcIssuerUrl) { this.oidcIssuerUrl = oidcIssuerUrl; }
+
+        public String getServiceAccountJwks() { return serviceAccountJwks; }
+        public void setServiceAccountJwks(String serviceAccountJwks) { this.serviceAccountJwks = serviceAccountJwks; }
 
         public Boolean getWorkloadIdentityEnabled() { return workloadIdentityEnabled; }
         public void setWorkloadIdentityEnabled(Boolean workloadIdentityEnabled) {

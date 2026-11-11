@@ -72,6 +72,9 @@ final class AksClusterRuntime {
         if (legacy) {
             return args;
         }
+        if (cluster.oidcIssuerEnabled()) {
+            args.addAll(issuerArgs(cluster.getOidcIssuerUrl()));
+        }
         if (cluster.entraEnabled()) {
             args.addAll(List.of(
                     "--kube-apiserver-arg=authentication-token-webhook-config-file=" + AUTHN_CONFIG,
@@ -110,6 +113,20 @@ final class AksClusterRuntime {
             files.put(AUTHZ_CONFIG, webhookKubeconfig(webhookUrl(cluster, "subject-access-review")));
         }
         return files;
+    }
+
+    /**
+     * The service account issuer of a cluster with the OIDC issuer: tokens are signed under the AKS-format URL, which
+     * k3s puts first ({@code -=} prepends, so its default issuer stays accepted for tokens issued before), the
+     * discovery document names the AKS-format JWKS URL, and token lifetimes follow AKS: no extended expiration
+     * (from 1.30) and at most 24 hours ({@code use-oidc-issuer.md}).
+     */
+    static List<String> issuerArgs(String issuerUrl) {
+        return List.of(
+                "--kube-apiserver-arg=service-account-issuer-=" + issuerUrl,
+                "--kube-apiserver-arg=service-account-jwks-uri=" + issuerUrl + "openid/v1/jwks",
+                "--kube-apiserver-arg=service-account-extend-token-expiration=false",
+                "--kube-apiserver-arg=service-account-max-token-expiration=24h");
     }
 
     /**

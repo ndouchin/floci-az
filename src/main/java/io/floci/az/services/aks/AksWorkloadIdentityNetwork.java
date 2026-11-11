@@ -20,7 +20,7 @@ final class AksWorkloadIdentityNetwork {
     static final String NETWORK_MANIFEST = "floci-aks-workload-identity-network.yaml";
     static final String CA_MANIFEST = "floci-aks-ca.yaml";
     static final String COREDNS_MANIFEST = "floci-aks-coredns-custom.yaml";
-    static final String ENTRA_HOST = "login.microsoftonline.com";
+    static final String ENTRA_HOST = "login.microsoftonline.com"; // cloud-literal: the webhook's AzurePublicCloud authority
 
     private AksWorkloadIdentityNetwork() {
     }

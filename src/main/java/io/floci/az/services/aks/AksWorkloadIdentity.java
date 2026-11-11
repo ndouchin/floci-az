@@ -16,7 +16,7 @@ import java.util.UUID;
  */
 final class AksWorkloadIdentity {
 
-    static final String ISSUER_HOST_SUFFIX = ".oic.prod-aks.azure.com";
+    static final String ISSUER_HOST_SUFFIX = ".oic.prod-aks.azure.com"; // cloud-literal: sovereign-cloud issuer hosts unverified
 
     private AksWorkloadIdentity() {
     }

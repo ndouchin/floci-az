@@ -47,7 +47,6 @@ final class AksWorkloadIdentityWebhook {
     static final String CA_NAME = "azure-workload-identity-ca";
     static final String CA_ORGANIZATION = "azure-workload-identity";
     static final String SERVICE_DNS_NAME = "azure-wi-webhook-webhook-service.kube-system.svc";
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     private AksWorkloadIdentityWebhook() {
     }
@@ -70,8 +69,8 @@ final class AksWorkloadIdentityWebhook {
             X509CertificateHolder caCert = ca.build(signer(caKeys.getPrivate()));
 
             JcaX509v3CertificateBuilder server = new JcaX509v3CertificateBuilder(caName,
-                    new BigInteger(64, RANDOM), Date.from(now), notAfter, new X500Name("CN=" + SERVICE_DNS_NAME),
-                    serverKeys.getPublic());
+                    new BigInteger(64, new SecureRandom()), Date.from(now), notAfter,
+                    new X500Name("CN=" + SERVICE_DNS_NAME), serverKeys.getPublic());
             server.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
             server.addExtension(Extension.keyUsage, true,
                     new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment));

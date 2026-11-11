@@ -210,7 +210,7 @@ public class TlsConfigSource implements ConfigSource {
                 "localhost.floci-az.io", "*.localhost.floci-az.io",
                 "*.vault.azure.net", "*.managedhsm.azure.net", "*.azurecr.io",
                 "host.docker.internal",
-                "login.microsoftonline.com", "*.oic.prod-aks.azure.com",
+                "login.microsoftonline.com", "*.oic.prod-aks.azure.com", // cloud-literal: the public-cloud names AKS pods use
                 "floci-az.kube-system.svc", "floci-az.kube-system.svc.cluster.local"));
         all.addAll(customHostnames);
         return all;

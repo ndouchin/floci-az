@@ -743,8 +743,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     private static Map<String, Object> operationBody(AzureRequest req, String location,
                                                      AksOperations.Status status) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id", "/subscriptions/" + ArmPaths.segmentAfter(req.resourcePath(), "subscriptions", "default")
-                + PROVIDER_PREFIX + "locations/" + location + "/operations/" + status.id());
+        body.put("id", "/subscriptions/" + extractSubscriptionId(req.resourcePath()) + PROVIDER_PREFIX
+                + "locations/" + location + "/operations/" + status.id());
         body.put("name", status.id());
         body.put("status", status.status());
         body.put("startTime", status.startTime().toString());

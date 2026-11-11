@@ -317,7 +317,7 @@ class AroDockerTest {
 
     /** Just enough of a Kubernetes client to talk to the cluster with the admin kubeconfig's client certificate. */
     static final class KubeApi {
-        private final HttpClient http;
+        final HttpClient http;
         final String server;
 
         private KubeApi(HttpClient http, String server) {

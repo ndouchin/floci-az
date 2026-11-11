@@ -55,7 +55,8 @@ class AroClusterManagerTest {
     EmulatorConfig config;
 
     private AroClusterManager manager() {
-        return new AroClusterManager(containerBuilder, lifecycleManager, containerDetector, portAllocator, config);
+        return new AroClusterManager(containerBuilder, lifecycleManager, containerDetector, portAllocator,
+                mock(DockerHostResolver.class), config);
     }
 
     @Test
@@ -332,7 +333,8 @@ class AroClusterManagerTest {
         lenient().when(portAllocator.allocate(7700, 7799)).thenReturn(7700);
         lenient().when(lifecycleManager.create(any())).thenReturn("cid");
         lenient().when(lifecycleManager.startCreated(eq("cid"), any())).thenReturn(new ContainerInfo("cid", Map.of()));
-        return new AroClusterManager(realBuilder, lifecycleManager, containerDetector, portAllocator, config);
+        return new AroClusterManager(realBuilder, lifecycleManager, containerDetector, portAllocator,
+                mock(DockerHostResolver.class), config);
     }
 
     private static OpenShiftCluster startableCluster() {

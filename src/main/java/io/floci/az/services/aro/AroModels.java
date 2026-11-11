@@ -66,6 +66,10 @@ public class AroModels {
         private int proxyPort;
         /** The access tokens the cluster's OAuth server issued, by object name. */
         private Map<String, OAuthToken> oauthTokens;
+        /** Whether the cluster runs the OpenShift web console, decided when it was created. */
+        private boolean consoleEnabled;
+        /** The secret of the OAuth client {@code console}, for a cluster with the console and the OAuth server. */
+        private String consoleClientSecret;
         /** The address reported as {@code apiserverProfile.ip} and the ingress profile's {@code ip}. */
         private String publicIp;
         /** Base64 admin kubeconfig, with the server set to {@link #endpoint}. */
@@ -152,6 +156,14 @@ public class AroModels {
 
         public Map<String, OAuthToken> getOauthTokens() { return oauthTokens; }
         public void setOauthTokens(Map<String, OAuthToken> oauthTokens) { this.oauthTokens = oauthTokens; }
+
+        public boolean isConsoleEnabled() { return consoleEnabled; }
+        public void setConsoleEnabled(boolean consoleEnabled) { this.consoleEnabled = consoleEnabled; }
+
+        public String getConsoleClientSecret() { return consoleClientSecret; }
+        public void setConsoleClientSecret(String consoleClientSecret) {
+            this.consoleClientSecret = consoleClientSecret;
+        }
 
         public String getPublicIp() { return publicIp; }
         public void setPublicIp(String publicIp) { this.publicIp = publicIp; }

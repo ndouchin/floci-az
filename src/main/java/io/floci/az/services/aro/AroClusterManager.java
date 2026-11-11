@@ -11,6 +11,7 @@ import io.floci.az.core.docker.ContainerLifecycleManager.EndpointInfo;
 import io.floci.az.core.docker.ContainerLifecycleManager.ExecResult;
 import io.floci.az.core.docker.ContainerSpec;
 import io.floci.az.core.docker.ContainerStorageHelper;
+import io.floci.az.core.docker.DockerHostResolver;
 import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.services.aro.AroModels.OpenShiftCluster;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -55,6 +56,7 @@ public class AroClusterManager {
     /** MINC's image store mount, which CRI-O's {@code storage.conf} lists as an additional image store. */
     private static final String IMAGE_STORE_DIR = "/host-container";
     private static final String KUBEADMIN_DIR = DATA_DIR + "/resources/kubeadmin";
+    private static final String CONSOLE_MANIFEST = "/tmp/floci-aro-console.json";
     /** The namespaces whose pods must all run before a cluster counts as ready. */
     private static final Set<String> CORE_NAMESPACES = Set.of("openshift-dns", "openshift-ingress",
             "openshift-service-ca", "openshift-cluster-csi-drivers");
@@ -73,6 +75,7 @@ public class AroClusterManager {
     private final ContainerLifecycleManager lifecycleManager;
     private final ContainerDetector containerDetector;
     private final PortAllocator portAllocator;
+    private final DockerHostResolver dockerHostResolver;
     private final EmulatorConfig config;
 
     @Inject
@@ -80,11 +83,13 @@ public class AroClusterManager {
                              ContainerLifecycleManager lifecycleManager,
                              ContainerDetector containerDetector,
                              PortAllocator portAllocator,
+                             DockerHostResolver dockerHostResolver,
                              EmulatorConfig config) {
         this.containerBuilder = containerBuilder;
         this.lifecycleManager = lifecycleManager;
         this.containerDetector = containerDetector;
         this.portAllocator = portAllocator;
+        this.dockerHostResolver = dockerHostResolver;
         this.config = config;
     }
 
@@ -144,6 +149,7 @@ public class AroClusterManager {
                     // differ, the router's LoadBalancer service has no local endpoint and drops outside traffic.
                     .withHostname(nodeName(cluster))
                     .withDockerNetwork(config.services().dockerNetwork())
+                    .withHostDockerInternalOnLinux()
                     .withPrivileged(true)
                     .withLogRotation()
                     .build();
@@ -429,13 +435,72 @@ public class AroClusterManager {
      */
     String proxyHost() {
         boolean local = lifecycleManager.publishedEndpoints()
-                ? "127.0.0.1".equals(lifecycleManager.daemonAddress())
+                ? isLoopback(lifecycleManager.daemonAddress())
                 : !containerDetector.isRunningInContainer();
         if (local) {
             return "localhost";
         }
         return config.hostname().filter(h -> !h.isBlank())
                 .orElseGet(() -> URI.create(config.effectiveBaseUrl()).getHost());
+    }
+
+    /** Whether a cluster created now gets the console: {@code console.enabled}, else by the daemon's architecture. */
+    public boolean consoleEnabled() {
+        return AroConsoleManifests.enabled(config.services().aro().console().enabled(),
+                lifecycleManager.daemonArchitecture(), config.services().aro().console().image());
+    }
+
+    /**
+     * The console's address: {@code https://console-openshift-console.apps.<full domain>}, with the router's
+     * published HTTPS port once the cluster has one, since that is where a browser reaches the Route.
+     */
+    static String consoleUrl(OpenShiftCluster cluster) {
+        String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
+        return "https://console-openshift-console.apps." + fullDomain
+                + (cluster.getHttpsHostPort() > 0 ? ":" + cluster.getHttpsHostPort() : "");
+    }
+
+    /**
+     * Applies the console's objects with {@code oc apply}. With the API proxy, the console logs in through it as
+     * {@code api.<full domain>}, which its pod resolves to the address the cluster reaches floci-az at; without the
+     * proxy it runs without login. Idempotent, so it runs again whenever floci-az takes the cluster back.
+     */
+    public void applyConsole(OpenShiftCluster cluster) {
+        String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
+        boolean withLogin = cluster.getProxyPort() > 0 && cluster.getConsoleClientSecret() != null;
+        AroConsoleManifests.Settings settings = new AroConsoleManifests.Settings(fullDomain, consoleUrl(cluster),
+                withLogin ? "https://api." + fullDomain + ":" + cluster.getProxyPort() : null,
+                withLogin ? proxyAddress(cluster) : null, config.services().aro().console().image(),
+                cluster.getImageTag(), cluster.getConsoleClientSecret(),
+                withLogin ? read(cluster, DATA_DIR + "/certs/kube-apiserver-external-signer/ca.crt") : null);
+        lifecycleManager.copyFileToContainer(cluster.getContainerId(), AroConsoleManifests.render(settings).toString(),
+                CONSOLE_MANIFEST);
+        oc(cluster.getContainerId(), "oc", "apply", "-f", CONSOLE_MANIFEST);
+    }
+
+    /** Whether the console's Deployment has an available replica. */
+    public boolean consoleAvailable(OpenShiftCluster cluster) {
+        ExecResult available = lifecycleManager.execInContainer(cluster.getContainerId(), "oc", "get", "deployment",
+                "console", "-n", AroConsoleManifests.NAMESPACE, "-o", "jsonpath={.status.availableReplicas}");
+        return available.exitCode() == 0 && !available.output().isBlank() && !"0".equals(available.output().strip());
+    }
+
+    /**
+     * The IP at which the cluster's pods reach floci-az, and so the API proxy: the host {@link DockerHostResolver}
+     * gives sidecars ({@code host.docker.internal}, the pod or container IP), resolved inside the cluster's container,
+     * since {@code hostAliases} takes addresses only.
+     */
+    String proxyAddress(OpenShiftCluster cluster) {
+        String host = dockerHostResolver.resolve();
+        if (host.matches("[0-9.]+") || host.contains(":")) {
+            return host;
+        }
+        ExecResult resolved = lifecycleManager.execInContainer(cluster.getContainerId(), "getent", "hosts", host);
+        String[] fields = resolved.output().strip().split("\\s+");
+        if (resolved.exitCode() != 0 || fields.length == 0 || fields[0].isBlank()) {
+            throw new IllegalStateException("cannot resolve " + host + " in the cluster's container");
+        }
+        return fields[0];
     }
 
     /** MicroShift's PEM files the API proxy serves and presents, read from the running container. */

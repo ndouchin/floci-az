@@ -807,6 +807,28 @@ public interface EmulatorConfig {
 
         /** The OpenShift OAuth server the API proxy serves, for {@code oc login} and the console. */
         AroOAuthConfig oauth();
+
+        /** The OpenShift web console on each real-mode cluster. */
+        AroConsoleConfig console();
+    }
+
+    interface AroConsoleConfig {
+        /**
+         * Unset: on when the Docker daemon is amd64, and on arm64 only when {@link #image()} is changed, since the OKD
+         * console image is published for amd64 only. Applies to clusters created from now on.
+         */
+        Optional<Boolean> enabled();
+
+        /**
+         * The console image, pulled by the cluster itself: OKD 4.19.0-okd-scos.17's payload console
+         * ({@code oc adm release info quay.io/okd/scos-release:4.19.0-okd-scos.17 --image-for=console}).
+         */
+        @WithDefault("quay.io/okd/scos-content@sha256:ba8cac1946833f0b26e657affe2c0eb46c2c0352bb293bd4b932f2f7e50dedab")
+        String image();
+
+        /** How long the console has to become available after the cluster is ready before floci-az logs it. */
+        @WithDefault("600")
+        int readyTimeoutSeconds();
     }
 
     interface AroOAuthConfig {

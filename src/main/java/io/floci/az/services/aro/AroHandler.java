@@ -21,6 +21,7 @@ import io.floci.az.core.storage.StorageFactory;
 import io.floci.az.services.aro.AroModels.OpenShiftCluster;
 import io.floci.az.services.aro.AroProperties.InvalidProperty;
 import io.floci.az.services.aro.oauth.OAuthToken;
+import io.floci.az.services.aro.oauth.OAuthTokens;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -109,6 +110,11 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
     private final Map<String, AroOperation> operations = new LinkedHashMap<>();
     /** Why each cluster that is up is not finalized yet, by instance id, for the message of a timeout. */
     private final Map<String, String> finalizeErrors = new ConcurrentHashMap<>();
+    /** Clusters whose console objects were applied since floci-az started, by instance id. */
+    private final Set<String> consolesApplied = ConcurrentHashMap.newKeySet();
+    /** Clusters whose console is not available yet, by instance id, with when to log that it is late. */
+    private final Map<String, Instant> consoleDeadlines = new ConcurrentHashMap<>();
+    private final Map<String, Instant> consoleChecks = new ConcurrentHashMap<>();
     private final Object lock = new Object();
     private final ScheduledExecutorService poller = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "aro-readiness-poller");
@@ -317,6 +323,10 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         cluster.setClusterUuid(AroProperties.newClusterUuid());
         cluster.setKubeadminPassword(kubeadminPassword());
         cluster.setOauthEnabled(!mocked() && config.services().aro().oauth().enabled());
+        cluster.setConsoleEnabled(!mocked() && consoleEnabled());
+        if (cluster.isConsoleEnabled() && cluster.isOauthEnabled()) {
+            cluster.setConsoleClientSecret(OAuthTokens.newToken(RANDOM).substring(OAuthTokens.PREFIX.length()));
+        }
         cluster.setImageTag(versions.resolve(version).orElseThrow().tag());
         cluster.setCreatedAt(Instant.now());
 
@@ -609,6 +619,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
     }
 
     private void remove(OpenShiftCluster cluster) {
+        forgetConsole(cluster);
         try {
             proxyManager.stop(cluster);
             clusterManager.removeCluster(cluster);
@@ -671,9 +682,12 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
                     succeed(cluster);
                 } else if (CREATING.equals(cluster.getProvisioningState())) {
                     pollCreating(cluster);
-                } else if (SUCCEEDED.equals(cluster.getProvisioningState()) && cluster.getProxyPort() > 0
-                        && cluster.getContainerId() != null && !proxyManager.running(cluster)) {
-                    startProxy(cluster);
+                } else if (SUCCEEDED.equals(cluster.getProvisioningState()) && cluster.getContainerId() != null) {
+                    if (cluster.getProxyPort() > 0 && !proxyManager.running(cluster)) {
+                        startProxy(cluster);
+                    }
+                    ensureConsole(cluster);
+                    watchConsole(cluster);
                 }
             }
         } catch (RuntimeException e) {
@@ -715,6 +729,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
             stored.setKubeadminSecretCreated(cluster.isKubeadminSecretCreated());
         });
         succeed(cluster);
+        ensureConsole(cluster);
     }
 
     /** Starts the API proxy of a ready cluster whose proxy is not running (adopted at startup, or a failed start). */
@@ -727,6 +742,73 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
             if (!String.valueOf(e.getMessage()).equals(previous)) {
                 LOG.warnv("ARO cluster {0}: {1}", cluster.getName(), e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Applies the console's objects once per cluster since floci-az started, after the cluster is ready; the console
+     * never holds readiness back. A failure is logged once and retried on the next poll.
+     */
+    private void ensureConsole(OpenShiftCluster cluster) {
+        String id = cluster.getInstanceId();
+        if (!cluster.isConsoleEnabled() || consolesApplied.contains(id)) {
+            return;
+        }
+        try {
+            clusterManager.applyConsole(cluster);
+            consolesApplied.add(id);
+            consoleDeadlines.put(id, Instant.now().plusSeconds(config.services().aro().console().readyTimeoutSeconds()));
+            finalizeErrors.remove(id);
+            LOG.infov("ARO cluster {0}: console objects applied for {1}", cluster.getName(),
+                    AroClusterManager.consoleUrl(cluster));
+        } catch (RuntimeException e) {
+            String previous = finalizeErrors.put(id, String.valueOf(e.getMessage()));
+            if (!String.valueOf(e.getMessage()).equals(previous)) {
+                LOG.warnv("ARO cluster {0}: could not apply the console: {1}", cluster.getName(), e.getMessage());
+            }
+        }
+    }
+
+    /** Logs when the console becomes available, or once when it is still not after {@code console.ready-timeout}. */
+    private void watchConsole(OpenShiftCluster cluster) {
+        String id = cluster.getInstanceId();
+        Instant deadline = consoleDeadlines.get(id);
+        Instant now = Instant.now();
+        if (deadline == null || now.isBefore(consoleChecks.getOrDefault(id, Instant.MIN))) {
+            return;
+        }
+        consoleChecks.put(id, now.plusSeconds(10));
+        boolean available;
+        try {
+            available = clusterManager.consoleAvailable(cluster);
+        } catch (RuntimeException e) {
+            LOG.debugv("ARO cluster {0}: console state unknown: {1}", cluster.getName(), e.getMessage());
+            available = false;
+        }
+        if (available) {
+            consoleDeadlines.remove(id);
+            LOG.infov("ARO cluster {0}: console available at {1}", cluster.getName(),
+                    AroClusterManager.consoleUrl(cluster));
+        } else if (now.isAfter(deadline)) {
+            consoleDeadlines.remove(id);
+            LOG.warnv("ARO cluster {0}: the console is not available {1} s after the cluster became ready; see "
+                    + "oc get pods -n openshift-console", cluster.getName(),
+                    String.valueOf(config.services().aro().console().readyTimeoutSeconds()));
+        }
+    }
+
+    private void forgetConsole(OpenShiftCluster cluster) {
+        consolesApplied.remove(cluster.getInstanceId());
+        consoleDeadlines.remove(cluster.getInstanceId());
+        consoleChecks.remove(cluster.getInstanceId());
+    }
+
+    private boolean consoleEnabled() {
+        try {
+            return clusterManager.consoleEnabled();
+        } catch (RuntimeException e) {
+            LOG.debugv("Cannot tell the Docker daemon's architecture; no console: {0}", e.getMessage());
+            return false;
         }
     }
 
@@ -800,7 +882,8 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         props.put("provisioningState", cluster.getProvisioningState());
         String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
         AroProperties.cast(props.computeIfAbsent("consoleProfile", k -> new LinkedHashMap<>()))
-                .put("url", "https://console-openshift-console.apps." + fullDomain + "/");
+                .put("url", (mocked() ? "https://console-openshift-console.apps." + fullDomain
+                        : AroClusterManager.consoleUrl(cluster)) + "/");
         Map<String, Object> apiserver = AroProperties.cast(props.get("apiserverProfile"));
         apiserver.put("url", cluster.getEndpoint() != null
                 ? cluster.getEndpoint() + "/" : "https://api." + fullDomain + ":6443/");
@@ -1009,6 +1092,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
     public void clear() {
         if (!mocked()) {
             for (OpenShiftCluster cluster : scanAll()) {
+                forgetConsole(cluster);
                 try {
                     proxyManager.stop(cluster);
                     clusterManager.removeCluster(cluster);

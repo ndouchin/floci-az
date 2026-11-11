@@ -70,11 +70,12 @@ public class AroProxyManager {
             OAuthTokenStore tokens = new OAuthTokenStore(cluster.getOauthTokens(), persistTokens);
             KubeadminAuthenticator kubeadmin = new KubeadminAuthenticator(upstream::readKubeadminSecret,
                     Clock.systemUTC());
+            String consoleUrl = cluster.isConsoleEnabled() ? AroClusterManager.consoleUrl(cluster) : null;
             OpenShiftOAuthServer oauth = new OpenShiftOAuthServer(List.of(kubeadmin), tokens,
                     new OpenShiftOAuthServer.Settings(config.services().aro().oauth().accessTokenMaxAgeSeconds(),
-                            null, null), Clock.systemUTC());
+                            cluster.getConsoleClientSecret(), consoleUrl), Clock.systemUTC());
             AroApiProxy proxy = new AroApiProxy(vertx, cluster.getProxyPort(), certificates, upstream, oauth,
-                    () -> null);
+                    () -> consoleUrl);
             proxy.listen().toCompletionStage().toCompletableFuture().get(15, TimeUnit.SECONDS);
             proxies.put(cluster.getInstanceId(), new Running(proxy, upstream));
             LOG.infov("API proxy of ARO cluster {0} listening on {1}, in front of {2}", cluster.getName(),

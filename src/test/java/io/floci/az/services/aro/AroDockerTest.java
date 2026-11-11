@@ -139,7 +139,8 @@ class AroDockerTest {
                 .body("properties.provisioningState", equalTo("Succeeded"))
                 .body("properties.apiserverProfile.url", startsWith("https://"))
                 .body("properties.consoleProfile.url",
-                        equalTo("https://console-openshift-console.apps." + FULL_DOMAIN + "/"));
+                        matchesPattern("https://console-openshift-console\\.apps\\." + FULL_DOMAIN.replace(".", "\\.")
+                                + ":76\\d\\d/"));
         containerName = clusterContainer().getNames()[0].substring(1);
     }
 
@@ -375,7 +376,12 @@ class AroDockerTest {
 
         /** Polls {@code path} for up to three minutes until {@code done} accepts it. */
         JsonNode await(String path, Predicate<JsonNode> done) throws Exception {
-            long deadline = System.currentTimeMillis() + Duration.ofMinutes(3).toMillis();
+            return await(path, done, Duration.ofMinutes(3));
+        }
+
+        /** Polls {@code path} for up to {@code timeout} until {@code done} accepts it. */
+        JsonNode await(String path, Predicate<JsonNode> done, Duration timeout) throws Exception {
+            long deadline = System.currentTimeMillis() + timeout.toMillis();
             String last = "";
             while (System.currentTimeMillis() < deadline) {
                 HttpResponse<String> response = http.send(HttpRequest.newBuilder(URI.create(server + path)).GET()

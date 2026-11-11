@@ -322,6 +322,10 @@ floci-az:
       oauth:
         enabled: true       # false = API URL straight to MicroShift, no oc login (new clusters only)
         access-token-max-age-seconds: 86400
+      console:
+        # enabled: true     # unset = on with an amd64 Docker daemon, off on arm64 unless image is changed
+        image: "quay.io/okd/scos-content@sha256:ba8cac1946833f0b26e657affe2c0eb46c2c0352bb293bd4b932f2f7e50dedab"
+        ready-timeout-seconds: 600   # the console never gates cluster readiness; floci-az logs when it is late
     aci:
       enabled: true
       mocked: true          # true = no Docker; container groups are pure ARM state (Succeeded/Running). false = back groups with real containers (shared-netns pods)

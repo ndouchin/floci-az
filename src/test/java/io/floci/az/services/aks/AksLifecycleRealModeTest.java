@@ -12,7 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -322,6 +324,44 @@ class AksLifecycleRealModeTest {
                 + " --type=merge -p \\{\"status\":\\{\"capacity\":\\{\"nvidia.com/gpu\":\"4\"},"
                 + "\"allocatable\":\\{\"nvidia.com/gpu\":\"4\"}}}"),
                 patches.getFirst());
+    }
+
+    @Test
+    @DisplayName("user and admin kubeconfigs carry the cluster's CA and client credential under AKS's names")
+    void kubeconfigsCarryTheExtractedCredentials() {
+        apiReady.set(true);
+        create("creds1", "{\"location\":\"eastus\",\"properties\":{}}").then().statusCode(201);
+        awaitState("creds1", "Succeeded");
+
+        for (String role : List.of("User", "Admin")) {
+            String value = given().contentType("application/json")
+                    .post(BASE + "creds1/listCluster" + role + "Credential" + API)
+                    .then().statusCode(200)
+                    .body("kubeconfigs[0].name", equalTo("cluster" + role))
+                    .extract().path("kubeconfigs[0].value");
+            String yaml = new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+            assertEquals("""
+                    apiVersion: v1
+                    clusters:
+                    - cluster:
+                        certificate-authority-data: Q0E=
+                        server: https://localhost:6500
+                      name: creds1
+                    contexts:
+                    - context:
+                        cluster: creds1
+                        user: cluster%1$s_rg-lro_creds1
+                      name: creds1
+                    current-context: creds1
+                    kind: Config
+                    preferences: {}
+                    users:
+                    - name: cluster%1$s_rg-lro_creds1
+                      user:
+                        client-certificate-data: Q0VSVA==
+                        client-key-data: S0VZ
+                    """.formatted(role), yaml);
+        }
     }
 
     @Test

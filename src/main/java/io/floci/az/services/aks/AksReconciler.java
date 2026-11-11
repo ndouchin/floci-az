@@ -137,7 +137,6 @@ final class AksReconciler {
             current.setCaData(cluster.getCaData());
             current.setClientCertificateData(cluster.getClientCertificateData());
             current.setClientKeyData(cluster.getClientKeyData());
-            current.setKubeconfig(AksKubeconfig.admin(current));
         });
     }
 

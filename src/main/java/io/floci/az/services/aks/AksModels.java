@@ -46,8 +46,6 @@ public class AksModels {
         private String serverImage;
         /** Shared secret agents join the server with; kept so a restored or upgraded server accepts them. */
         private String clusterToken;
-        /** Base64-encoded kubeconfig extracted from k3s (or a mock kubeconfig). */
-        private String kubeconfig;
         /** Base64-encoded certificate authority data from the cluster. */
         private String caData;
         private String clientCertificateData;
@@ -128,9 +126,6 @@ public class AksModels {
 
         public String getClusterToken() { return clusterToken; }
         public void setClusterToken(String clusterToken) { this.clusterToken = clusterToken; }
-
-        public String getKubeconfig() { return kubeconfig; }
-        public void setKubeconfig(String kubeconfig) { this.kubeconfig = kubeconfig; }
 
         public String getCaData() { return caData; }
         public void setCaData(String caData) { this.caData = caData; }

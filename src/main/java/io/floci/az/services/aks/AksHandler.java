@@ -33,12 +33,10 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -890,22 +888,34 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     // ── Credentials ────────────────────────────────────────────────────────────
 
+    /**
+     * The kubeconfig of the cluster's user or admin credential. Without Microsoft Entra integration both carry a
+     * cluster-admin client certificate, as on AKS; {@code disableLocalAccounts} refuses the admin one with the error
+     * AKS returns.
+     */
     private Response handleListCredentials(String sub, String rg, String clusterName, boolean admin) {
         Optional<ManagedCluster> found = getCluster(clusterId(sub, rg, clusterName));
         if (found.isEmpty()) {
             return notFound("Managed cluster '" + clusterName + "' not found.");
         }
         ManagedCluster cluster = found.get();
-        String kubeconfig = cluster.getKubeconfig();
-        if (kubeconfig == null || kubeconfig.isBlank()) {
-            if (!config.services().aks().mocked()) {
-                return credentialsNotAvailable(cluster);
-            }
-            kubeconfig = mockKubeconfig(cluster);
+        if (admin && cluster.localAccountsDisabled()) {
+            return ArmErrors.error(400, "BadRequest", "Getting static credential is not allowed because this"
+                    + " cluster is set to disable local accounts.");
+        }
+        AksKubeconfig.Role role = admin ? AksKubeconfig.Role.ADMIN : AksKubeconfig.Role.USER;
+        String kubeconfig;
+        if (cluster.getCaData() != null && cluster.getClientCertificateData() != null
+                && cluster.getClientKeyData() != null && cluster.getEndpoint() != null) {
+            kubeconfig = AksKubeconfig.of(cluster, role);
+        } else if (config.services().aks().mocked()) {
+            kubeconfig = AksKubeconfig.mock(cluster, role);
+        } else {
+            return credentialsNotAvailable(cluster);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("kubeconfigs", List.of(Map.of(
-                "name", "clusterAdmin",
+                "name", role.credentialName(),
                 "value", kubeconfig)));
         return Response.ok(result).type("application/json").build();
     }
@@ -1195,38 +1205,6 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
             echoed.put("servicePrincipalProfile", principal);
         }
         return echoed;
-    }
-
-    // ── Mock kubeconfig ────────────────────────────────────────────────────────
-
-    private static String mockKubeconfig(ManagedCluster cluster) {
-        String endpoint = cluster.getEndpoint() != null
-                ? cluster.getEndpoint()
-                : "https://localhost:6443";
-        String yaml = String.format("""
-                apiVersion: v1
-                clusters:
-                - cluster:
-                    server: %s
-                    insecure-skip-tls-verify: true
-                  name: %s
-                contexts:
-                - context:
-                    cluster: %s
-                    user: clusterAdmin_%s
-                  name: %s
-                current-context: %s
-                kind: Config
-                preferences: {}
-                users:
-                - name: clusterAdmin_%s
-                  user:
-                    token: floci-az-mock-token
-                """,
-                endpoint, cluster.getName(), cluster.getName(),
-                cluster.getName(), cluster.getName(), cluster.getName(),
-                cluster.getName());
-        return Base64.getEncoder().encodeToString(yaml.getBytes(StandardCharsets.UTF_8));
     }
 
     // ── Path parsing helpers ───────────────────────────────────────────────────

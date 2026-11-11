@@ -18,9 +18,11 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,8 +38,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * the API hands out. Skipped when no Docker daemon is reachable.
  *
  * <p>Tests are ordered and share one cluster: created on 1.35 with four agent pools (one of them GPU, one empty),
- * checked node by node, for storage and networking, scaled, stopped and started, its server container lost and
- * restored on the same data volume, upgraded to 1.36, then deleted.
+ * checked node by node, for storage, networking and credentials, scaled, stopped and started, its server container
+ * lost and restored on the same data volume, upgraded to 1.36, then deleted.
  */
 @QuarkusTest
 @TestProfile(AksDockerTest.RealModeProfile.class)
@@ -168,11 +170,21 @@ class AksDockerTest {
 
     @Test
     @Order(2)
-    @DisplayName("the admin kubeconfig reaches the API server running the requested version")
-    void adminKubeconfigReachesTheRequestedVersion() throws Exception {
+    @DisplayName("the admin and user kubeconfigs, named as AKS names them, reach the API server on the requested"
+            + " version")
+    void kubeconfigsReachTheRequestedVersion() throws Exception {
         adminKubeconfig = kubeconfig("listClusterAdminCredential");
+        String userKubeconfig = kubeconfig("listClusterUserCredential");
 
         assertTrue(gitVersion(adminKubeconfig).startsWith("v1.35.10"), gitVersion(adminKubeconfig));
+        assertTrue(gitVersion(userKubeconfig).startsWith("v1.35.10"), gitVersion(userKubeconfig));
+        assertTrue(decode(adminKubeconfig).contains("current-context: " + NAME + "\n"), decode(adminKubeconfig));
+        assertTrue(decode(adminKubeconfig).contains("user: clusterAdmin_" + RG + "_" + NAME + "\n"));
+        assertTrue(decode(userKubeconfig).contains("user: clusterUser_" + RG + "_" + NAME + "\n"));
+    }
+
+    private static String decode(String kubeconfig) {
+        return new String(Base64.getDecoder().decode(kubeconfig), StandardCharsets.UTF_8);
     }
 
     private JsonNode nodes() throws Exception {
@@ -329,6 +341,24 @@ class AksDockerTest {
 
     @Test
     @Order(7)
+    @DisplayName("disableLocalAccounts refuses the admin credential with AKS's error, and enabling them gives it back")
+    void disableLocalAccounts() throws Exception {
+        awaitOperation(given().contentType("application/json")
+                .body("{\"location\":\"eastus\",\"properties\":{\"disableLocalAccounts\":true}}")
+                .put(CLUSTER_PATH + API));
+
+        given().contentType("application/json").post(CLUSTER_PATH + "/listClusterAdminCredential" + API)
+                .then().statusCode(400).body("error.code", equalTo("BadRequest"));
+        assertTrue(gitVersion(kubeconfig("listClusterUserCredential")).startsWith("v1.35.10"));
+
+        awaitOperation(given().contentType("application/json")
+                .body("{\"location\":\"eastus\",\"properties\":{\"disableLocalAccounts\":false}}")
+                .put(CLUSTER_PATH + API));
+        kubeconfig("listClusterAdminCredential");
+    }
+
+    @Test
+    @Order(8)
     @DisplayName("scaling a pool through the agent pool API removes its highest-index node")
     void scalingAPoolRemovesNodes() throws Exception {
         Response scaled = given().contentType("application/json")
@@ -344,7 +374,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("stop stops the containers and start brings the same cluster back")
     void stopAndStart() {
         Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
@@ -363,7 +393,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
     void restoreRecreatesALostServerOnItsVolume() {
         String lost = containers("server").getFirst().getId();
@@ -377,7 +407,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     @DisplayName("changing kubernetesVersion upgrades the server and the nodes, the old kubeconfig keeps working")
     void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
         Response upgraded = given().contentType("application/json")

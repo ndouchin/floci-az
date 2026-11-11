@@ -89,6 +89,13 @@ curl -s "<Azure-AsyncOperation URL>"
 curl -s -X POST "$ARM/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo/listAdminCredentials?api-version=2025-07-25" \
   | python3 -c "import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['kubeconfig']).decode())" > demo.kubeconfig
 oc --kubeconfig demo.kubeconfig get nodes,clusterversion,storageclass
+
+# or log in as kubeadmin, as on ARO (see "oc login and the OAuth server")
+CLUSTER="$ARM/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo"
+API=$(curl -s "$CLUSTER?api-version=2025-07-25" | python3 -c "import sys,json; print(json.load(sys.stdin)['properties']['apiserverProfile']['url'])")
+PW=$(curl -s -X POST "$CLUSTER/listCredentials?api-version=2025-07-25" | python3 -c "import sys,json; print(json.load(sys.stdin)['kubeadminPassword'])")
+oc login "$API" -u kubeadmin -p "$PW" --insecure-skip-tls-verify   # or --certificate-authority=<CA of demo.kubeconfig>
+oc whoami                                                           # kube:admin
 ```
 
 The `az aro` commands and Terraform's `azurerm_redhat_openshift_cluster` have not been tested against floci-az.
@@ -120,7 +127,7 @@ curl -H "Host: web-demo.apps.demo.eastus.aroapp.io" http://localhost:<port>/
 | `clusterProfile.resourceGroupId` | as sent, lowercased; default `/subscriptions/{sub}/resourceGroups/aro-{domain}`. The ARO API requires the field; `az aro create` sends `aro-<random id>`, the same id it uses as the domain when none is given | ARO-RP `putorpatch` (lowercases), [azure-cli `aro/custom.py`][azcli] |
 | `clusterProfile.fipsValidatedModules` | default `Disabled` | ARO-RP `api.SetDefaults` |
 | `consoleProfile.url` | `https://console-openshift-console.apps.<full domain>/` | [Connect to an ARO cluster][connect] |
-| `apiserverProfile.url` | real mode: the reachable endpoint (`https://localhost:<port>/`); mocked: `https://api.<full domain>:6443/` | spec example (shape); emulator choice (reachability) |
+| `apiserverProfile.url` | real mode: the cluster's API proxy in floci-az (`https://localhost:<proxy port>/`, see [`oc login`](#oc-login-and-the-oauth-server)); mocked: `https://api.<full domain>:6443/` | spec example (shape); emulator choice (reachability) |
 | `apiserverProfile.ip`, `ingressProfiles[].ip` | the address the ports are published on (`127.0.0.1` locally) | emulator choice |
 | `networkProfile.podCidr` / `serviceCidr` | default `10.128.0.0/14` / `172.30.0.0/16` | [`az aro create` reference][azaro] |
 | `networkProfile.outboundType`, `preconfiguredNSG`, `loadBalancerProfile` | default `Loadbalancer`, `Disabled`, `{"managedOutboundIps":{"count":1}}` | ARO-RP `api.SetDefaults` |
@@ -129,7 +136,7 @@ curl -H "Host: web-demo.apps.demo.eastus.aroapp.io" http://localhost:<port>/
 | `workerProfilesStatus` | on GET and list only, one entry per zone `<infraID>-worker-<location><1..3>`, the count spread across them | ARO-RP enricher (fields); MachineSet naming not verified on a live cluster |
 | `servicePrincipalProfile` | `clientId` only, never the secret; the pull secret is never returned either | ARO-RP `putorpatch` |
 | `listCredentials` | `kubeadminUsername: kubeadmin`, a password stored with the cluster, 23 characters `xxxxx-xxxxx-xxxxx-xxxxx` from letters and digits without `l`, `O`, `0`, `1` | [openshift/installer `pkg/asset/password`][installer-password] |
-| `listAdminCredentials` | `{"kubeconfig": "<base64>"}`, MicroShift's admin kubeconfig with the server set to the reachable endpoint | spec example |
+| `listAdminCredentials` | `{"kubeconfig": "<base64>"}`, MicroShift's admin kubeconfig (client certificate `system:admin`) with the server set to `apiserverProfile.url` | spec example |
 | `openShiftVersions` | one entry per configured minor, `name` and `properties.version` the `x.y.z` its image tag starts with, `type: Microsoft.RedHatOpenShift/OpenShiftVersion`, no `id` | ARO-RP `openShiftVersionConverter` |
 
 `platformWorkloadIdentityProfile`, `identity`, subnet ids, disk encryption sets and fields of older api-versions are
@@ -150,6 +157,8 @@ stored and echoed; nothing acts on them.
 | `ClusterVersion/version` | `spec.clusterID` a random UUID; `status.desired.version` and a `Completed` history entry with the OKD version the image runs (`4.19.0-okd-scos.17`), image `quay.io/okd/scos-release:<tag>` | [openshift/api release-4.19][openshift-api] CRD |
 | `Infrastructure/cluster` | platform `Azure`, `apiServerURL https://api.<full domain>:6443`, `apiServerInternalURI https://api-int.<full domain>:6443`, `infrastructureName <infraID>`, `platformStatus.azure` with `cloudName AzurePublicCloud`, the cluster and network resource groups, topology `HighlyAvailable` as ARO reports it | openshift/api CRD |
 | `Ingress/cluster` | `spec.domain apps.<full domain>` | openshift/api CRD |
+| Secret `kube-system/kubeadmin` | key `kubeadmin`, the bcrypt (`$2a$`, cost 10) of the `listCredentials` password, created once when the cluster first becomes ready | [openshift-docs `authentication-kubeadmin.adoc`][ocp-kubeadmin]; installer's Go `bcrypt.DefaultCost` |
+| ClusterRoleBinding `cluster-admins` | `cluster-admin` for Group `system:cluster-admins` and User `system:admin`, reapplied at every start | [openshift-docs `rbac-viewing-cluster-roles.adoc`][ocp-rbac] |
 | SCCs | MicroShift's: `anyuid`, `hostaccess`, `hostmount-anyuid`, `hostnetwork`, `hostnetwork-v2`, `nonroot`, `nonroot-v2`, `privileged`, `restricted`, `restricted-v2`; a new namespace gets `openshift.io/sa.scc.uid-range` and the Pod Security labels `restricted` | MicroShift |
 
 Pod admission works as on OpenShift. A pod created by a controller (a Deployment, a Job) is admitted with the
@@ -174,11 +183,83 @@ them.
 ### Readiness
 
 A cluster is `Succeeded` when MicroShift's systemd unit is active, the API answers `/readyz`, every pod in
-`openshift-dns`, `openshift-ingress`, `openshift-service-ca` and `openshift-cluster-csi-drivers` runs, and the node,
-`ClusterVersion`, `Infrastructure` and `Ingress` have been updated. Measured: on a 6-CPU arm64 VM the API answered
+`openshift-dns`, `openshift-ingress`, `openshift-service-ca` and `openshift-cluster-csi-drivers` runs, the node,
+`ClusterVersion`, `Infrastructure` and `Ingress` have been updated, `kube-system/kubeadmin` and `cluster-admins` exist,
+and the cluster's API proxy serves the OAuth metadata, so `oc login` works as soon as the cluster is `Succeeded`. Measured: on a 6-CPU arm64 VM the API answered
 after 52 s and every pod ran after 140 to 170 s; on an amd64 Docker-in-Docker runner the cluster was `Succeeded` after
 126 to 159 s. The first create also pulls the image (0.85 GB arm64, 1.1 GB amd64). The container uses about 1.3 GiB of
 memory.
+
+---
+
+## `oc login` and the OAuth server
+
+On ARO, `oc login <apiserverProfile.url> -u kubeadmin -p <kubeadminPassword>` logs in through the cluster's OAuth
+server ([Connect to an ARO cluster][connect]). MicroShift has no OAuth server: its API server answers 404 at
+`/.well-known/oauth-authorization-server` and takes no token webhook or extra flags (MicroShift `pkg/config`,
+`assets/controllers/kube-apiserver/defaultconfig.yaml`: `oauthMetadataFile: ""`). So floci-az runs a TLS **API
+proxy** per cluster, in its own process, on a host port from `proxy-base-port`-`proxy-max-port` (7700-7799).
+`apiserverProfile.url` and the admin kubeconfig point at it. It serves the OpenShift OAuth server and forwards every
+other request to MicroShift's API server.
+
+| Request | Answer | Source |
+|---|---|---|
+| `GET /.well-known/oauth-authorization-server` | the authentication operator's metadata; `issuer` is `https://<the Host the client used>` | [cluster-authentication-operator `metadata_controller.go`][cao-metadata] |
+| `/oauth/authorize` | code flow with PKCE (`plain`, `S256`). `openshift-challenging-client` (`oc login -u`): `401` with `WWW-Authenticate: Basic realm="openshift"` when the request has `X-CSRF-Token`, else `401` with only a `Warning`; the browser clients get a login page at `/login/kube:admin` and a session cookie `ssn` (5 minutes). Codes are single use and expire after 300 s | [oauth-server][oauth-server] `osin/authorize.go`, `passwordchallenger` |
+| `POST /oauth/token` | `{"access_token":"sha256~<43>","expires_in":86400,"scope":"user:full","token_type":"Bearer"}`, no refresh token; `scope` is `user:full` when the client asked for none. Errors as osin JSON with status 400 (`invalid_grant`, `invalid_request`, `unauthorized_client`, `unsupported_grant_type`) | `osin/access.go`, `pkg/oauth/handlers/grant.go`, `pkg/osinserver/defaults.go` |
+| `/oauth/token/request`, `/oauth/token/display` | the "Display Token" pages, with the `oc login --token=... --server=...` command | `openshift-browser-client` |
+| `/logout` | ends the login session | |
+| `DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/<name>` | revokes the token whose object name is `sha256~<base64url(SHA-256(token))>` (`oc logout`), for its owner or a cluster administrator | `pkg/osinserver/registrystorage/storage.go` |
+| `GET /apis/user.openshift.io/v1/users/~` | the virtual User of a kubeadmin token or client certificate (older `oc` versions ask for it) | [oauth-apiserver `user/.../etcd.go`][oauth-apiserver-user] |
+| `GET /console` | `302` to the console when it runs | OpenShift kube-apiserver `withConsoleRedirect` |
+| anything else | forwarded to MicroShift, streamed both ways; `Upgrade` requests (exec, attach, cp, port-forward, over WebSocket or SPDY) become a byte tunnel | |
+
+What the API server sees, through MicroShift's request-header authentication (the proxy presents MicroShift's
+aggregator client certificate and sets `X-Remote-User`, `X-Remote-Group` and `X-Remote-Extra-*`; incoming `X-Remote-*`
+headers are always dropped, `Impersonate-*` headers pass):
+
+| Credential | User | Measured with |
+|---|---|---|
+| token from `oc login -u kubeadmin` | `kube:admin`, groups `system:cluster-admins`, `system:authenticated`, extra `scopes.authorization.openshift.io: [user:full]` | `oc whoami`, SelfSubjectReview |
+| admin kubeconfig (client certificate from MicroShift's client CA) | `system:admin`, `system:masters` | SelfSubjectReview |
+| ServiceAccount token, unknown token, no credentials | forwarded as sent, so MicroShift decides | SelfSubjectReview |
+
+`kube:admin` follows library-go's bootstrap authenticator, which oauth-server and oauth-apiserver use: the basic-auth
+name is `kubeadmin` (or `kube:admin`), the password is checked against `kube-system/kubeadmin`, passwords under 23
+characters are refused, and the secret is ignored when it is being deleted, absent, or created more than one hour after
+`kube-system`. Deleting it is how OpenShift removes kubeadmin ([`authentication-remove-kubeadmin.adoc`][ocp-remove-kubeadmin]):
+the next login answers 401, and tokens already issued stop working within 10 seconds, since a token is tied to the
+secret's UID and resource version. floci-az creates the secret once; a recreate on the same volume does not bring a
+deleted kubeadmin back.
+
+**Certificates.** The proxy serves MicroShift's own serving certificates: the localhost one to `localhost` and clients
+that send no SNI, the external one (which names `api.<full domain>`, the container name and floci-az's host name when
+it is not `localhost`) otherwise. `oc login --certificate-authority=<file>` with the CA of the admin kubeconfig verifies,
+as does `--insecure-skip-tls-verify`. HTTP/1.1 only. The files are read when the proxy starts; MicroShift's serving
+certificates are valid for one year, and how MicroShift renews them was not checked.
+
+**Where the API URL points**, per Docker mode (`P` the proxy port, `Q` MicroShift's published 6443):
+
+| floci-az runs | `apiserverProfile.url` | floci-az reaches MicroShift at |
+|---|---|---|
+| on the host, local Docker daemon | `https://localhost:P` | `https://localhost:Q` |
+| in Docker (`hostname` or `base-url` names it) | `https://<floci-az host>:P`; publish `7700-7799` on the floci-az container as `P:P` so host clients can use `https://localhost:P` | `https://<cluster container>:6443` on the shared network |
+| `docker.endpoint-mode=published`, daemon on loopback | `https://localhost:P` | `https://localhost:Q` |
+| `docker.endpoint-mode=published`, remote daemon | `https://<floci-az host>:P` | `https://<daemon host>:Q` |
+
+Only the first and third rows run in tests; the others follow the same rules and are covered by unit tests only.
+
+**Deviations** from a real cluster:
+
+- The OAuth issuer is the API URL the client used, not `https://oauth-openshift.apps.<domain>`, so `oc login` needs
+  no DNS.
+- Tokens work through the API URL only; MicroShift's own port does not know them.
+- kubeadmin is the only identity provider. There are no OAuth API objects (`oc get oauthaccesstokens`, `users`,
+  `identities`, `groups`), no `OAuth/cluster`, no token inactivity timeout; login sessions and codes are kept in memory.
+- `oc login` prints `Using "default" namespace` instead of the project list: there is no `project.openshift.io`.
+- `users/~` is answered for kubeadmin tokens and client certificates only; for other credentials it reaches
+  MicroShift, which answers 404.
+- The login page is a minimal HTML form, not OpenShift's.
 
 ---
 
@@ -195,6 +276,9 @@ memory.
 | `storage-provisioner-image` | `docker.io/rancher/local-path-provisioner:v0.0.37` | |
 | `storage-helper-image` | `docker.io/library/busybox:1.37` | |
 | `keep-running-on-shutdown` | `false` | |
+| `proxy-base-port` / `proxy-max-port` | `7700` / `7799` | host ports of the API proxies, one per cluster, bound by floci-az itself |
+| `oauth.enabled` | `true` | `false`: new clusters get no API proxy and no OAuth server; `apiserverProfile.url` is MicroShift's published port and `oc login` fails. Clusters keep what they were created with |
+| `oauth.access-token-max-age-seconds` | `86400` | lifetime of the tokens the OAuth server issues ([`oauth-configuring-internal-oauth.adoc`][ocp-oauth-config]: "By default, tokens are only valid for 24 hours") |
 
 ### Persistence and restart
 
@@ -205,6 +289,11 @@ changed. At shutdown the container and its volumes are removed unless `keep-runn
 so without that flag a restart recreates the cluster. In memory mode nothing is restored. `DELETE` and
 `POST /_admin/reset` remove the container and both volumes.
 
+The API proxy comes back on the same port. Issued tokens are stored with the cluster, so they survive a restart of
+floci-az while the cluster's data volume does; a cluster recreated without its volume gets a new `kubeadmin` secret
+(same password) and loses its tokens. A cluster stored before the API proxy existed keeps its direct API URL and has
+no OAuth server, and the log says so at startup; recreate it to get `oc login`.
+
 ---
 
 ## What is not OpenShift here
@@ -214,8 +303,8 @@ so without that flag a restart recreates the cluster. In memory mode nothing is 
   and no scaling.
 - **OKD, not OCP.** The image is an OKD (CentOS Stream CoreOS) build of MicroShift 4.19; `ClusterVersion` reports the
   OKD version, not the `4.19.x` the ARM resource echoes. There are no cluster upgrades.
-- **No OAuth server.** `listCredentials` returns a kubeadmin password, but `oc login -u kubeadmin` fails: MicroShift has
-  no OAuth server and no identity providers. Use the admin kubeconfig.
+- **kubeadmin only.** `oc login -u kubeadmin` works through floci-az's OAuth server (see
+  [`oc login`](#oc-login-and-the-oauth-server)); there are no other identity providers and no OAuth API objects.
 - **No console.** `consoleProfile.url` has ARO's shape; nothing serves it.
 - **Few OpenShift APIs.** MicroShift serves `route.openshift.io` and `security.openshift.io` (Routes and SCCs). The
   `ClusterVersion`, `Infrastructure` and `Ingress` objects are static. There is no `project.openshift.io`, no
@@ -235,6 +324,11 @@ so without that flag a restart recreates the cluster. In memory mode nothing is 
   none; floci-az sends `Retry-After: 1` so clients poll quickly.
 - `ClusterVersion` conditions, `versionHash` and the `Infrastructure` topology values are modelled on OCP, not read
   from an ARO cluster.
+- Whether a real ARO API server certificate is publicly trusted, which would let `oc login` work without
+  `--certificate-authority` or `--insecure-skip-tls-verify`.
+- Which `oc` release first asks for a SelfSubjectReview before `users/~` (oc commit `a9e0887fbb`, 2023, about 4.15);
+  both are served for kubeadmin.
+- floci-az in Docker, a remote Docker daemon and Docker Desktop with the API proxy (see the table above).
 
 [spec]: https://github.com/Azure/azure-rest-api-specs/tree/main/specification/redhatopenshift/resource-manager/Microsoft.RedHatOpenShift/OpenShiftClusters/stable/2025-07-25
 [arorp-frontend]: https://github.com/Azure/ARO-RP/tree/master/pkg/frontend
@@ -252,3 +346,10 @@ so without that flag a restart recreates the cluster. In memory mode nothing is 
 [aro-faq]: https://learn.microsoft.com/en-us/azure/openshift/openshift-faq
 [aro-azurefile]: https://learn.microsoft.com/en-us/azure/openshift/howto-configure-azure-file-storageclass
 [ocp-scc]: https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/security-context-constraints-about.adoc
+[ocp-kubeadmin]: https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/authentication-kubeadmin.adoc
+[ocp-remove-kubeadmin]: https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/authentication-remove-kubeadmin.adoc
+[ocp-rbac]: https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/rbac-viewing-cluster-roles.adoc
+[ocp-oauth-config]: https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/oauth-configuring-internal-oauth.adoc
+[oauth-server]: https://github.com/openshift/oauth-server/tree/release-4.19
+[oauth-apiserver-user]: https://github.com/openshift/oauth-apiserver/blob/release-4.19/pkg/user/apiserver/registry/user/etcd/etcd.go
+[cao-metadata]: https://github.com/openshift/cluster-authentication-operator/blob/release-4.19/pkg/controllers/metadata/metadata_controller.go

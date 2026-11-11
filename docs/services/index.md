@@ -21,7 +21,7 @@ Floci-AZ provides emulation for several core Azure services.
 | **Azure Database for MySQL** | ARM path (`Microsoft.DBforMySQL`) + `/{account}-mysql/` | ✅ Flexible servers, databases, firewall rules, configurations; Docker-backed `mysql` containers or mocked |
 | **Azure Database for MariaDB** | ARM path (`Microsoft.DBforMariaDB`) + `/{account}-mariadb/` | ✅ Servers (single-server model), databases, firewall rules, configurations; Docker-backed `mariadb` containers or mocked |
 | **Azure Kubernetes Service** | ARM path (`Microsoft.ContainerService`) | ✅ Clusters, agent pools, credentials; real k3s containers or mocked |
-| **Azure Red Hat OpenShift** | ARM path (`Microsoft.RedHatOpenShift`) | ✅ [Clusters](aro.md) behind long-running operations, kubeadmin and admin kubeconfig credentials, installable versions; one single-node MicroShift (OKD) container per cluster or mocked |
+| **Azure Red Hat OpenShift** | ARM path (`Microsoft.RedHatOpenShift`) | ✅ [Clusters](aro.md) behind long-running operations, kubeadmin and admin kubeconfig credentials, `oc login -u kubeadmin`, installable versions; one single-node MicroShift (OKD) container per cluster or mocked |
 | **Azure Container Apps** | ARM path (`Microsoft.App`) + FQDN ingress | ✅ Managed environments, apps, revisions, ingress, secrets, min/max replicas; Docker-backed or mocked |
 | **API Management** | ARM path (`Microsoft.ApiManagement`) + `/{account}-apim/` | ✅ APIs, operations, products, subscriptions, named values, backends, OpenAPI import; gateway routing + policy subset |
 | **Virtual Network** | ARM path (`Microsoft.Network`) | ✅ VNets, subnets, NICs, public IPs, NSGs, private DNS zones (+ virtual network links, record sets), private endpoints (+ private DNS zone groups), private link services; in-process ARM state for Terraform/OpenTofu and VM dependencies |
@@ -54,7 +54,7 @@ The following services spin up Docker containers on demand and require the Docke
 | **Azure SQL Database** | `mcr.microsoft.com/mssql/server:2025-latest` | Optional managed mode; TDS direct to container port |
 | **Cosmos DB engines** | Various (mongo, postgres, cassandra, …) | Protocol direct to container port |
 | **Azure Kubernetes Service** | `rancher/k3s:latest` | kubectl direct to k3s API server port |
-| **Azure Red Hat OpenShift** | `quay.io/minc-org/minc:4.19.0-okd-scos.17-<arch>` | `oc`/kubectl direct to the MicroShift API server; Routes through the published router ports (7600-7699) |
+| **Azure Red Hat OpenShift** | `quay.io/minc-org/minc:4.19.0-okd-scos.17-<arch>` | `oc`/kubectl through floci-az's API proxy (7700-7799), which serves `oc login`; Routes through the published router ports (7600-7699) |
 | **Azure Database for PostgreSQL** | `postgres:17-alpine` | PostgreSQL wire protocol direct to container port |
 | **Azure Database for MySQL** | `mysql:8.0` | MySQL wire protocol direct to container port |
 | **Azure Database for MariaDB** | `mariadb:10.11` | MySQL wire protocol direct to container port |

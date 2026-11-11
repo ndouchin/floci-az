@@ -765,6 +765,14 @@ public interface EmulatorConfig {
          */
         @WithDefault("false")
         boolean kubeconfigFlociAuthority();
+
+        /**
+         * How long a cluster's API server caches the answers of floci-az's token and authorization webhooks
+         * ({@code authentication-token-webhook-cache-ttl}, {@code authorization-webhook-cache-*-ttl}). AKS documents
+         * up to five minutes for a role assignment to take effect; the short default lets tests see changes at once.
+         */
+        @WithDefault("5")
+        int webhookCacheTtlSeconds();
     }
 
     /** Azure Red Hat OpenShift ({@code Microsoft.RedHatOpenShift}): clusters backed by MicroShift containers. */

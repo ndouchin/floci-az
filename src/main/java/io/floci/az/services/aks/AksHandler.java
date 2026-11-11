@@ -18,6 +18,7 @@ import io.floci.az.core.arm.ArmResources;
 import io.floci.az.core.arm.ArmScope;
 import io.floci.az.core.arm.ResourceIndexContributor;
 import io.floci.az.core.cloud.CloudDefaults;
+import io.floci.az.core.docker.DockerHostResolver;
 import io.floci.az.core.storage.StorageFactory;
 import io.floci.az.services.aks.AksModels.AgentPoolProfile;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * HTTP handler for Azure Kubernetes Service (AKS) management-plane requests.
@@ -109,11 +111,19 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     private final ArmResourceStore<ManagedCluster> store;
     private final AksReconciler reconciler;
 
-    @Inject
     public AksHandler(EmulatorConfig config,
                       AksClusterManager clusterManager,
                       StorageFactory storageFactory,
                       CloudDefaults defaults) {
+        this(config, clusterManager, storageFactory, defaults, null);
+    }
+
+    @Inject
+    public AksHandler(EmulatorConfig config,
+                      AksClusterManager clusterManager,
+                      StorageFactory storageFactory,
+                      CloudDefaults defaults,
+                      DockerHostResolver hostResolver) {
         this.config = config;
         this.defaults = defaults;
         this.clusterManager = clusterManager;
@@ -122,8 +132,17 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         this.store = ArmResourceStore.create(storageFactory, "aks", ManagedCluster.class, ManagedCluster::armId,
                 key -> true);
         this.reconciler = new AksReconciler(store, clusterManager, versions,
-                new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster()),
+                new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster(),
+                        flociUrl(config, hostResolver), config.services().aks().entra().webhookCacheTtlSeconds()),
                 Duration.ofSeconds(Math.max(1, config.services().aks().readyTimeoutSeconds())));
+    }
+
+    /** floci-az's plain HTTP base URL as cluster containers reach it, resolved once. */
+    private static Supplier<String> flociUrl(EmulatorConfig config, DockerHostResolver hostResolver) {
+        AtomicReference<String> resolved = new AtomicReference<>();
+        return () -> resolved.updateAndGet(current -> current != null ? current
+                : "http://" + (hostResolver == null ? "host.docker.internal" : hostResolver.resolve()) + ":"
+                        + config.port());
     }
 
     @PostConstruct
@@ -1108,6 +1127,17 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     }
 
     // ── Storage helpers ────────────────────────────────────────────────────────
+
+    /** The cluster with {@code instanceId}, which names its containers and its webhook routes. */
+    public Optional<ManagedCluster> clusterByInstanceId(String instanceId) {
+        return store.all().stream().map(ArmResourceStore.Stored::value)
+                .filter(cluster -> instanceId != null && instanceId.equals(cluster.getInstanceId()))
+                .findFirst();
+    }
+
+    Optional<ManagedCluster> findCluster(String sub, String rg, String clusterName) {
+        return getCluster(clusterId(sub, rg, clusterName));
+    }
 
     private Optional<ManagedCluster> getCluster(ArmResourceId id) {
         return store.get(id).map(ArmResourceStore.Stored::value);

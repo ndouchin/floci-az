@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * What runs inside a cluster's containers: an agentless k3s server playing the managed control plane, and one k3s
@@ -21,14 +22,30 @@ final class AksClusterRuntime {
 
     private static final Logger LOG = Logger.getLogger(AksClusterRuntime.class);
 
+    static final String WEBHOOK_DIR = "/etc/floci";
+    static final String AUTHN_CONFIG = WEBHOOK_DIR + "/aks-authn.yaml";
+
     private final AksClusterManager manager;
     private final AksVersions versions;
     private final int maxNodesPerCluster;
+    private final Supplier<String> flociUrl;
+    private final int webhookCacheTtlSeconds;
 
     AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster) {
+        this(manager, versions, maxNodesPerCluster, () -> "http://host.docker.internal:4577", 5);
+    }
+
+    /**
+     * @param flociUrl               floci-az's base URL as the cluster's containers reach it
+     * @param webhookCacheTtlSeconds how long the API server caches a webhook's answer
+     */
+    AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster,
+                      Supplier<String> flociUrl, int webhookCacheTtlSeconds) {
         this.manager = manager;
         this.versions = versions;
         this.maxNodesPerCluster = maxNodesPerCluster;
+        this.flociUrl = flociUrl;
+        this.webhookCacheTtlSeconds = webhookCacheTtlSeconds;
     }
 
     /**
@@ -43,12 +60,50 @@ final class AksClusterRuntime {
                 "--tls-san=" + manager.containerName(cluster)));
         manager.daemonTlsSan().ifPresent(san -> args.add("--tls-san=" + san));
         args.addAll(AksNetwork.serverArgs(cluster.getNetworkProfile()));
+        if (cluster.entraEnabled()) {
+            args.addAll(List.of(
+                    "--kube-apiserver-arg=authentication-token-webhook-config-file=" + AUTHN_CONFIG,
+                    "--kube-apiserver-arg=authentication-token-webhook-version=v1",
+                    "--kube-apiserver-arg=authentication-token-webhook-cache-ttl=" + webhookCacheTtlSeconds + "s"));
+        }
         return args;
     }
 
-    /** Files k3s reads only when it starts (absolute path to content); they count as server arguments. */
+    /**
+     * Files k3s reads only when it starts (absolute path to content); they count as server arguments. An Entra
+     * cluster's API server gets the kubeconfig of floci-az's token webhook.
+     */
     Map<String, String> startupFiles(ManagedCluster cluster) {
-        return Map.of();
+        Map<String, String> files = new LinkedHashMap<>();
+        if (cluster.entraEnabled()) {
+            files.put(AUTHN_CONFIG, webhookKubeconfig(webhookUrl(cluster, "token-review")));
+        }
+        return files;
+    }
+
+    String webhookUrl(ManagedCluster cluster, String review) {
+        return flociUrl.get() + "/_floci/aks/clusters/" + cluster.getInstanceId() + "/" + review;
+    }
+
+    /** The kubeconfig format webhook configuration files take: one cluster, the webhook's URL, no credential. */
+    static String webhookKubeconfig(String url) {
+        return """
+                apiVersion: v1
+                kind: Config
+                clusters:
+                - name: floci-az
+                  cluster:
+                    server: %s
+                users:
+                - name: kube-apiserver
+                  user: {}
+                contexts:
+                - name: webhook
+                  context:
+                    cluster: floci-az
+                    user: kube-apiserver
+                current-context: webhook
+                """.formatted(url);
     }
 
     /** Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates. */

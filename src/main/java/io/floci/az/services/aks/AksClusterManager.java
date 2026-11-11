@@ -169,6 +169,7 @@ public class AksClusterManager {
                     .withPortBinding(K3S_API_SERVER_PORT, hostPort)
                     .withNamedVolume(containerName, K3S_DATA_DIR)
                     .withPrimaryNetwork(networkName(cluster))
+                    .withHostDockerInternalOnLinux()
                     .withPrivileged(true)
                     .withLogRotation()
                     .build();

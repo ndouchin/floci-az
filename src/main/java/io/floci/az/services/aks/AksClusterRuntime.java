@@ -24,6 +24,7 @@ final class AksClusterRuntime {
 
     static final String WEBHOOK_DIR = "/etc/floci";
     static final String AUTHN_CONFIG = WEBHOOK_DIR + "/aks-authn.yaml";
+    static final String ADMIN_GROUPS_MANIFEST = "floci-aks-admin-groups.yaml";
 
     private final AksClusterManager manager;
     private final AksVersions versions;
@@ -106,10 +107,51 @@ final class AksClusterRuntime {
                 """.formatted(url);
     }
 
-    /** Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates. */
+    /**
+     * Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates, and for an Entra cluster
+     * the ClusterRoleBinding of its admin groups. k3s re-applies a manifest whose content changed, so they are
+     * written again on every reconcile.
+     */
     Map<String, String> manifests(ManagedCluster cluster) {
         Version controlPlane = Version.parse(cluster.getCurrentKubernetesVersion()).orElseGet(versions::defaultVersion);
-        return Map.of(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
+        Map<String, String> manifests = new LinkedHashMap<>();
+        manifests.put(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
+        if (cluster.entraEnabled()) {
+            manifests.put(ADMIN_GROUPS_MANIFEST, adminGroupsBinding(cluster));
+        }
+        return manifests;
+    }
+
+    /**
+     * The ClusterRoleBinding of {@code adminGroupObjectIDs} to {@code cluster-admin}. Its name is not documented; with
+     * Azure RBAC the admin groups are irrelevant ({@code concepts-identity.md}), so it names no subject, and an empty
+     * list keeps the file in place for k3s instead of leaving a stale binding behind.
+     */
+    static String adminGroupsBinding(ManagedCluster cluster) {
+        List<String> groups = cluster.getAadProfile().azureRbac() ? List.of() : cluster.getAadProfile().adminGroups();
+        StringBuilder yaml = new StringBuilder("""
+                apiVersion: rbac.authorization.k8s.io/v1
+                kind: ClusterRoleBinding
+                metadata:
+                  name: aks-cluster-admin-binding-aad
+                  labels:
+                    kubernetes.azure.com/managed-by: floci-az
+                roleRef:
+                  apiGroup: rbac.authorization.k8s.io
+                  kind: ClusterRole
+                  name: cluster-admin
+                """);
+        if (groups.isEmpty()) {
+            yaml.append("subjects: []\n");
+        } else {
+            yaml.append("subjects:\n");
+            groups.forEach(group -> yaml.append("""
+                    - apiGroup: rbac.authorization.k8s.io
+                      kind: Group
+                      name: "%s"
+                    """.formatted(group)));
+        }
+        return yaml.toString();
     }
 
     List<String> agentArgs(ManagedCluster cluster, AgentPoolProfile pool, String hash, int index,

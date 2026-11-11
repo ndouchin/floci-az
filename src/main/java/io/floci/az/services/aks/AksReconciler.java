@@ -133,6 +133,9 @@ final class AksReconciler {
         });
         waitUntil(id, cluster.getInstanceId(), () -> manager.isApiReady(cluster),
                 "the API server did not answer /readyz within " + readyTimeout.toSeconds() + " s");
+        if (start == AksClusterManager.ServerStart.ADOPTED) {
+            manager.updateManifests(cluster, runtime.manifests(cluster));
+        }
         manager.extractCredentials(cluster);
         persist(id, cluster.getInstanceId(), current -> {
             current.setCaData(cluster.getCaData());

@@ -140,4 +140,52 @@ class AksEntraDockerTest {
     void anUnknownTokenIsUnauthorized() throws Exception {
         assertEquals(401, as("not-a-token").exchange("GET", "/api/v1/namespaces", null).status());
     }
+
+    private static String userToken() {
+        return token("password", AksEntra.CLIENT_APP_ID, Map.of("username", EntraStore.DEV_USER_UPN,
+                "password", "ignored"));
+    }
+
+    private int createNamespace(String name) throws Exception {
+        return as(userToken()).exchange("POST", "/api/v1/namespaces",
+                "{\"apiVersion\": \"v1\", \"kind\": \"Namespace\", \"metadata\": {\"name\": \"" + name + "\"}}")
+                .status();
+    }
+
+    private void awaitStatus(int expected, ThrowingSupplier<Integer> call) {
+        AksTestPolling.until(Duration.ofSeconds(90), () -> {
+            try {
+                return call.get() == expected;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+    }
+
+    @FunctionalInterface
+    interface ThrowingSupplier<T> {
+        T get() throws Exception;
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("a member of an admin group is cluster-admin through the generated ClusterRoleBinding")
+    void anAdminGroupMemberIsClusterAdmin() throws Exception {
+        assertEquals(403, createNamespace("before-admin"));
+        Response updated = putCluster("{\"managed\": true, \"adminGroupObjectIDs\": [\""
+                + EntraStore.DEV_GROUP_OBJECT_ID + "\"]}");
+        updated.then().statusCode(200);
+        awaitOperation(updated);
+        awaitStatus(201, () -> createNamespace("admin-one"));
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("removing the group from adminGroupObjectIDs takes cluster-admin away")
+    void removingTheGroupRevokesClusterAdmin() throws Exception {
+        Response updated = putCluster("{\"managed\": true, \"adminGroupObjectIDs\": []}");
+        updated.then().statusCode(200);
+        awaitOperation(updated);
+        awaitStatus(403, () -> createNamespace("admin-two"));
+    }
 }

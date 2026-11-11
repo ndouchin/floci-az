@@ -290,6 +290,17 @@ public class AksClusterManager {
         return Optional.empty();
     }
 
+    /** Writes {@code manifests} (file name to content) into the running server's k3s auto-deploy directory. */
+    public void updateManifests(ManagedCluster cluster, Map<String, String> manifests) {
+        if (cluster.getContainerId() == null || manifests.isEmpty()) {
+            return;
+        }
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        manifests.forEach((file, content) ->
+                files.put(MANIFESTS_DIR + "/" + file, content.getBytes(StandardCharsets.UTF_8)));
+        lifecycleManager.copyFilesToContainer(cluster.getContainerId(), files);
+    }
+
     /** True once the API server answers {@code /readyz}, asked from inside the server container. */
     public boolean isApiReady(ManagedCluster cluster) {
         if (cluster.getContainerId() == null) {

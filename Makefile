@@ -65,9 +65,11 @@ SUITE_ENV_DOTNET = -e SERVICEBUS_HOST=floci-az-servicebus-default \
 SERVICEBUS_EMULATOR_ENV = -e FLOCI_AZ_SERVICES_SERVICE_BUS_MOCKED=false
 JAVA_SERVICEBUS_EMULATOR_ENV = $(SERVICEBUS_EMULATOR_ENV) \
 	-e FLOCI_AZ_SERVICES_SERVICE_BUS_LOCK_DURATION_SECONDS=5
-# AksCompatibilityTest drives the mocked AKS control plane; real mode would start a k3s container.
+# AksCompatibilityTest and AroCompatibilityTest drive the mocked AKS and ARO control planes; real mode
+# would start a k3s or a MicroShift container.
 JAVA_EMULATOR_ENV = $(JAVA_SERVICEBUS_EMULATOR_ENV) \
-	-e FLOCI_AZ_SERVICES_AKS_MOCKED=true
+	-e FLOCI_AZ_SERVICES_AKS_MOCKED=true \
+	-e FLOCI_AZ_SERVICES_ARO_MOCKED=true
 # PARITY=azure (or strict) starts the emulator of any Docker compat session at that floci-az.parity
 # level: `make test-terraform-compat PARITY=azure`. Empty keeps the default level. The nightly parity
 # legs in .github/workflows/compatibility.yml set the same variable (emulator axis, see AGENTS.md).

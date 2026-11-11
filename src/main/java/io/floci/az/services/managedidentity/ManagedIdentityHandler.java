@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Microsoft.ManagedIdentity handler. Serves both planes for {@code serviceType="managedidentity"}:
@@ -55,6 +56,9 @@ public class ManagedIdentityHandler implements AzureServiceHandler, Resettable {
     private static final String PROVIDER_MARKER = "/providers/Microsoft.ManagedIdentity/";
     private static final String IDENTITY_TYPE = ManagedIdentityStore.IDENTITY_TYPE;
     private static final String FIC_TYPE = ManagedIdentityStore.CREDENTIAL_TYPE;
+    private static final Pattern FIC_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{2,119}");
+    private static final int MAX_CREDENTIALS = 20;
+    private static final String EXPRESSIONS_SINCE = "2025-01-31";
 
     private final EmulatorConfig config;
     private final ManagedIdentityStore store;
@@ -239,7 +243,7 @@ public class ManagedIdentityHandler implements AzureServiceHandler, Resettable {
         String identityName = ArmPaths.resourceName(path, "userAssignedIdentities").orElse(null);
         ArmResourceId identityId = identityName == null ? null : identityId(sub, rg, identityName);
         if (identityId == null || store.identity(identityId).isEmpty()) {
-            return identityNotFound(identityName);
+            return parentIdentityNotFound();
         }
 
         String ficName = ArmPaths.resourceName(path, "federatedIdentityCredentials").orElse(null);
@@ -263,29 +267,71 @@ public class ManagedIdentityHandler implements AzureServiceHandler, Resettable {
         };
     }
 
+    /**
+     * Writes a federated identity credential with the rules and messages Entra documents
+     * ({@code workload-identity-federation-considerations.md}, Errors): a 3 to 120 character name of alphanumerics,
+     * dashes and underscores starting with an alphanumeric, exactly one audience, an issuer and subject pair unique
+     * on the identity, at most 20 credentials. From {@code 2025-01-31-preview} a {@code claimsMatchingExpression} may
+     * stand in for the subject, never next to it.
+     */
     private Response putFederatedCredential(AzureRequest req, ArmResourceId identityId, ArmResourceId id,
                                             String identityName, String ficName) {
+        if (!FIC_NAME.matcher(ficName).matches()) {
+            return ArmErrors.error(400, "BadRequest", "Federated Identity Credential name '" + ficName + "' is invalid.");
+        }
         Map<String, Object> body = ArmJson.parseBodyStrict(req);
         Map<String, Object> bodyProps = ArmJson.cast(body.get("properties"));
         String issuer = ArmJson.string(bodyProps, "issuer", null);
         String subject = ArmJson.string(bodyProps, "subject", null);
-        if (issuer == null || subject == null || !(bodyProps.get("audiences") instanceof List<?> audiences)) {
+        Map<String, Object> expression = expressionsSupported(req)
+                && bodyProps.get("claimsMatchingExpression") instanceof Map<?, ?> given
+                ? new LinkedHashMap<>(ArmJson.cast(given)) : null;
+        if (subject != null && expression != null) {
             return ArmErrors.error(400, "BadRequest",
-                    "federatedIdentityCredential requires properties.issuer, properties.subject and properties.audiences");
+                    "Either 'subject' or 'claimsMatchingExpression' must be defined, but not both.");
+        }
+        if (issuer == null || (subject == null && expression == null)
+                || !(bodyProps.get("audiences") instanceof List<?> audiences)) {
+            return ArmErrors.error(400, "BadRequest", "Federated Identity Credential from HTTP body has empty properties");
+        }
+        if (audiences.size() != 1) {
+            return ArmErrors.error(400, "BadRequest", "Federated identity credentials must have exactly one audience.");
+        }
+        List<FederatedIdentityCredential> others = store.credentials(identityId).stream()
+                .filter(credential -> !credential.name().equalsIgnoreCase(ficName)).toList();
+        if (subject != null && others.stream()
+                .anyMatch(credential -> issuer.equals(credential.issuer()) && subject.equals(credential.subject()))) {
+            return ArmErrors.error(400, "BadRequest",
+                    "Issuer and subject combination already exists for this Managed Identity.");
+        }
+        if (others.size() >= MAX_CREDENTIALS && store.credential(id).isEmpty()) {
+            return ArmErrors.error(400, "BadRequest", "A user-assigned managed identity can have at most "
+                    + MAX_CREDENTIALS + " federated identity credentials.");
         }
 
         List<Object> audienceList = new ArrayList<>(audiences);
         return store.createOrUpdateCredential(identityId, id, existing -> new FederatedIdentityCredential(
                         existing.map(FederatedIdentityCredential::id).orElse(id.id()),
                         existing.map(FederatedIdentityCredential::name).orElse(ficName),
-                        issuer, subject, audienceList))
+                        issuer, subject, audienceList, expression))
                 .map(written -> Response.status(written.created() ? 201 : 200)
                         .entity(credentialResponse(written.stored().value())).build())
                 .orElseGet(() -> identityNotFound(identityName));
     }
 
+    /** {@code claimsMatchingExpression} exists from {@code 2025-01-31-preview} on. */
+    private static boolean expressionsSupported(AzureRequest req) {
+        String version = req.queryParams() == null ? null : req.queryParams().get("api-version");
+        return version != null && version.length() >= 10
+                && version.substring(0, 10).compareTo(EXPRESSIONS_SINCE) >= 0;
+    }
+
     private static Response identityNotFound(String identityName) {
         return ArmErrors.error(404, "ResourceNotFound", "Resource not found: userAssignedIdentities/" + identityName);
+    }
+
+    private static Response parentIdentityNotFound() {
+        return ArmErrors.error(404, "ResourceNotFound", "The parent user-assigned identity doesn't exist.");
     }
 
     // ── ARM: system-assigned identities/default ─────────────────────────────────
@@ -496,6 +542,10 @@ public class ManagedIdentityHandler implements AzureServiceHandler, Resettable {
         properties.put("issuer", credential.issuer());
         properties.put("subject", credential.subject());
         properties.put("audiences", credential.audiences());
+        if (credential.claimsMatchingExpression() != null) {
+            properties.remove("subject");
+            properties.put("claimsMatchingExpression", credential.claimsMatchingExpression());
+        }
 
         Map<String, Object> resource = new LinkedHashMap<>();
         resource.put("id", credential.id());

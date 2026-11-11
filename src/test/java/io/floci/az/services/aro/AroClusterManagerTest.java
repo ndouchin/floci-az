@@ -6,12 +6,14 @@ import io.floci.az.core.docker.ContainerDetector;
 import io.floci.az.core.docker.ContainerLifecycleManager;
 import io.floci.az.core.docker.ContainerLifecycleManager.ContainerInfo;
 import io.floci.az.core.docker.ContainerLifecycleManager.ContainerPresence;
+import io.floci.az.core.docker.ContainerLifecycleManager.ExecResult;
 import io.floci.az.core.docker.ContainerSpec;
 import io.floci.az.core.docker.CurrentContainerNetworkResolver;
 import io.floci.az.core.docker.DockerHostResolver;
 import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.core.dns.EmbeddedDnsServer;
 import io.floci.az.services.aro.AroModels.OpenShiftCluster;
+import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -19,10 +21,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -157,6 +161,65 @@ class AroClusterManagerTest {
 
         assertEquals("cid", cluster.getContainerId());
         assertEquals("https://localhost:7600", cluster.getEndpoint());
+    }
+
+    @Test
+    void finalizeCreatesTheKubeadminSecretOnceWithABcryptOfThePassword() {
+        OpenShiftCluster cluster = finalizableCluster();
+        List<List<String>> commands = recordExecs(command -> true);
+
+        manager().finalizeCluster(cluster);
+
+        List<String> create = commands.stream().filter(c -> c.size() > 2 && c.get(1).equals("create")).findFirst()
+                .orElseThrow();
+        assertEquals(List.of("oc", "create", "secret", "generic", "kubeadmin", "-n", "kube-system"),
+                create.subList(0, 7));
+        String hash = create.get(7).substring("--from-literal=kubeadmin=".length());
+        assertTrue(hash.startsWith("$2a$10$"), hash);
+        assertTrue(OpenBSDBCrypt.checkPassword(hash, "abcde-fghij-kmnop-qrstu".toCharArray()));
+        assertTrue(cluster.isKubeadminSecretCreated());
+
+        commands.clear();
+        manager().finalizeCluster(cluster);
+        assertTrue(commands.stream().noneMatch(c -> c.get(1).equals("create")), commands.toString());
+    }
+
+    @Test
+    void finalizeAcceptsAnExistingKubeadminSecretAndWaitsForTheClusterAdminsBinding() {
+        OpenShiftCluster cluster = finalizableCluster();
+        recordExecs(command -> !command.contains("clusterrolebinding"));
+        assertThrows(IllegalStateException.class, () -> manager().finalizeCluster(cluster));
+        assertFalse(cluster.isKubeadminSecretCreated());
+
+        recordExecs(command -> !command.get(1).equals("create"));
+        manager().finalizeCluster(cluster);
+        assertTrue(cluster.isKubeadminSecretCreated());
+    }
+
+    private OpenShiftCluster finalizableCluster() {
+        OpenShiftCluster cluster = startableCluster();
+        cluster.setContainerId("cid");
+        cluster.setEndpoint("https://localhost:7700");
+        cluster.setKubeadminPassword("abcde-fghij-kmnop-qrstu");
+        return cluster;
+    }
+
+    /**
+     * Answers every exec in container {@code cid}: success when {@code succeeds} accepts the command, else exit 1 with
+     * the AlreadyExists message oc prints for a create; {@code cat} of the kubeconfig gives one.
+     */
+    private List<List<String>> recordExecs(Predicate<List<String>> succeeds) {
+        List<List<String>> commands = new ArrayList<>();
+        lenient().when(lifecycleManager.execInContainer(eq("cid"), any(String[].class))).thenAnswer(invocation -> {
+            List<String> command = List.of((String[]) invocation.getRawArguments()[1]);
+            commands.add(command);
+            if (command.getFirst().equals("cat")) {
+                return new ExecResult(0, "clusters:\n- cluster:\n    server: https://localhost:6443\n");
+            }
+            return succeeds.test(command) ? new ExecResult(0, "")
+                    : new ExecResult(1, "Error from server (AlreadyExists): secrets \"kubeadmin\" already exists");
+        });
+        return commands;
     }
 
     /** A manager on a real {@link ContainerBuilder}, whose Docker calls succeed: create gives {@code cid}. */

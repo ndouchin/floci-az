@@ -634,6 +634,10 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
             AroClusterManager.Restore outcome = clusterManager.restore(cluster);
             mutate(cluster, stored -> {
                 copyRuntime(cluster, stored);
+                if (outcome == AroClusterManager.Restore.RECREATED) {
+                    stored.setKubeadminSecretCreated(false);
+                    stored.setOauthTokens(null);
+                }
                 if (outcome != AroClusterManager.Restore.ADOPTED) {
                     stored.setKubeconfig(null);
                     stored.setProvisioningState(CREATING);
@@ -687,7 +691,10 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         finalizeErrors.remove(cluster.getInstanceId());
         LOG.infov("ARO cluster {0} is ready after {1} s", cluster.getName(),
                 Duration.between(cluster.getCreatedAt(), Instant.now()).toSeconds());
-        mutate(cluster, stored -> stored.setKubeconfig(cluster.getKubeconfig()));
+        mutate(cluster, stored -> {
+            stored.setKubeconfig(cluster.getKubeconfig());
+            stored.setKubeadminSecretCreated(cluster.isKubeadminSecretCreated());
+        });
         succeed(cluster);
     }
 

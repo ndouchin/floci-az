@@ -15,6 +15,7 @@ import io.floci.az.core.docker.PortAllocator;
 import io.floci.az.services.aro.AroModels.OpenShiftCluster;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
 import org.jboss.logging.Logger;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -45,6 +46,7 @@ import java.util.Set;
 public class AroClusterManager {
 
     private static final Logger LOG = Logger.getLogger(AroClusterManager.class);
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     static final int API_PORT = 6443;
     static final int ROUTER_HTTP_PORT = 80;
@@ -259,9 +261,34 @@ public class AroClusterManager {
             throw new IllegalStateException("no kubeconfig at " + path + ": " + kubeconfig.output().strip());
         }
         String rewritten = kubeconfig.output().replaceAll("server: https://[^\\n]+", "server: " + cluster.getEndpoint());
+        if (lifecycleManager.execInContainer(containerId, "oc", "get", "clusterrolebinding", "cluster-admins", "-o",
+                "name").exitCode() != 0) {
+            throw new IllegalStateException("ClusterRoleBinding cluster-admins is not applied yet");
+        }
+        ensureKubeadminSecret(cluster);
         cluster.setKubeconfig(Base64.getEncoder().encodeToString(rewritten.getBytes(StandardCharsets.UTF_8)));
         LOG.infov("ARO cluster {0} finalized: node {1}, kubeconfig for {2}", cluster.getName(), nodeName,
                 cluster.getEndpoint());
+    }
+
+    /**
+     * Creates Secret {@code kube-system/kubeadmin} with the bcrypt of the cluster's kubeadmin password (version 2a,
+     * cost 10, as Go's {@code bcrypt.DefaultCost} gives the installer), once per cluster: a later finalize on the same
+     * volume leaves a deleted secret deleted. An existing secret counts as created.
+     */
+    private void ensureKubeadminSecret(OpenShiftCluster cluster) {
+        if (cluster.isKubeadminSecretCreated() || cluster.getKubeadminPassword() == null) {
+            return;
+        }
+        byte[] salt = new byte[16];
+        RANDOM.nextBytes(salt);
+        String hash = OpenBSDBCrypt.generate("2a", cluster.getKubeadminPassword().toCharArray(), salt, 10);
+        ExecResult created = lifecycleManager.execInContainer(cluster.getContainerId(), "oc", "create", "secret",
+                "generic", "kubeadmin", "-n", "kube-system", "--from-literal=kubeadmin=" + hash);
+        if (created.exitCode() != 0 && !created.output().contains("AlreadyExists")) {
+            throw new IllegalStateException("oc create secret kubeadmin failed: " + created.output().strip());
+        }
+        cluster.setKubeadminSecretCreated(true);
     }
 
     /** Removes the container at shutdown, unless {@code keepRunningOnShutdown} asks to leave it running. */

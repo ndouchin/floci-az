@@ -2,6 +2,7 @@ package io.floci.az.services.aro;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.floci.az.services.aro.oauth.OAuthToken;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 import java.time.Instant;
@@ -41,6 +42,11 @@ public class AroModels {
         /** The {@code spec.clusterID} of the cluster's {@code ClusterVersion}. */
         private String clusterUuid;
         private String kubeadminPassword;
+        /**
+         * Whether finalize created Secret {@code kube-system/kubeadmin}; it is created once per cluster, so a kubeadmin
+         * the user deleted stays deleted when the container is recreated on its volume.
+         */
+        private boolean kubeadminSecretCreated;
         /** The MicroShift image tag the cluster runs, without its architecture suffix. */
         private String imageTag;
         private String containerId;
@@ -51,6 +57,13 @@ public class AroModels {
         private int apiHostPort;
         private int httpHostPort;
         private int httpsHostPort;
+        /**
+         * The host port of the API proxy floci-az runs in front of MicroShift, which serves the OAuth server; 0 for a
+         * cluster without one (created with {@code oauth.enabled=false}, or stored before the proxy existed).
+         */
+        private int proxyPort;
+        /** The access tokens the cluster's OAuth server issued, by object name. */
+        private Map<String, OAuthToken> oauthTokens;
         /** The address reported as {@code apiserverProfile.ip} and the ingress profile's {@code ip}. */
         private String publicIp;
         /** Base64 admin kubeconfig, with the server set to {@link #endpoint}. */
@@ -103,6 +116,11 @@ public class AroModels {
         public String getKubeadminPassword() { return kubeadminPassword; }
         public void setKubeadminPassword(String kubeadminPassword) { this.kubeadminPassword = kubeadminPassword; }
 
+        public boolean isKubeadminSecretCreated() { return kubeadminSecretCreated; }
+        public void setKubeadminSecretCreated(boolean kubeadminSecretCreated) {
+            this.kubeadminSecretCreated = kubeadminSecretCreated;
+        }
+
         public String getImageTag() { return imageTag; }
         public void setImageTag(String imageTag) { this.imageTag = imageTag; }
 
@@ -123,6 +141,12 @@ public class AroModels {
 
         public int getHttpsHostPort() { return httpsHostPort; }
         public void setHttpsHostPort(int httpsHostPort) { this.httpsHostPort = httpsHostPort; }
+
+        public int getProxyPort() { return proxyPort; }
+        public void setProxyPort(int proxyPort) { this.proxyPort = proxyPort; }
+
+        public Map<String, OAuthToken> getOauthTokens() { return oauthTokens; }
+        public void setOauthTokens(Map<String, OAuthToken> oauthTokens) { this.oauthTokens = oauthTokens; }
 
         public String getPublicIp() { return publicIp; }
         public void setPublicIp(String publicIp) { this.publicIp = publicIp; }

@@ -18,7 +18,8 @@ import java.util.Map;
 /**
  * The files a cluster's MicroShift container starts with: a {@code config.d} drop-in and the kustomizations MicroShift
  * applies from {@code /etc/microshift/manifests.d} at every start (storage classes, the {@code config.openshift.io}
- * CRDs and their cluster objects), plus the status patches applied once the API answers.
+ * CRDs and their cluster objects, and OpenShift's {@code cluster-admins} ClusterRoleBinding, which kube-apiserver
+ * reconciles at every start on OpenShift), plus the status patches applied once the API answers.
  */
 final class AroManifests {
 
@@ -64,6 +65,9 @@ final class AroManifests {
         files.put(config + "cluster-config.yaml", utf8(resource("cluster-config.yaml")
                 .replace("${CLUSTER_ID}", settings.clusterUuid())
                 .replace("${DOMAIN}", settings.fullDomain())));
+        String auth = MANIFESTS_DIR + "/040-floci-aro-auth/";
+        files.put(auth + "kustomization.yaml", utf8(kustomization(List.of("cluster-admins.yaml"))));
+        files.put(auth + "cluster-admins.yaml", utf8(resource("cluster-admins.yaml")));
         return files;
     }
 

@@ -67,9 +67,9 @@ class AksCredentialsTest {
     }
 
     @Test
-    @DisplayName("disableLocalAccounts refuses the admin credential with AKS's BadRequest, the user one still works")
+    @DisplayName("disableLocalAccounts refuses the admin credential with AKS's BadRequest, the Entra user one still works")
     void disableLocalAccountsRefusesTheAdminCredential() {
-        put("c3", "{\"disableLocalAccounts\":true}");
+        put("c3", "{\"disableLocalAccounts\":true,\"aadProfile\":{\"managed\":true}}");
 
         given().contentType("application/json").post(CLUSTERS + "c3/listClusterAdminCredential" + API)
                 .then().statusCode(400)

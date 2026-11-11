@@ -129,6 +129,20 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     @PostConstruct
     public void init() {
         dropShadowedClusters();
+        migrateEchoedProfiles();
+    }
+
+    /** Records written before a profile was typed kept it among their echoed properties: type it now. */
+    void migrateEchoedProfiles() {
+        for (ArmResourceStore.Stored<ManagedCluster> stored : store.all()) {
+            if (stored.value().getEchoedProperties() != null
+                    && stored.value().getEchoedProperties().containsKey("aadProfile")) {
+                store.update(stored.id(), cluster -> {
+                    AksEntra.migrate(cluster);
+                    return cluster;
+                });
+            }
+        }
     }
 
     /**
@@ -329,6 +343,12 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 .build();
     }
 
+    /** The tenant of the request's subscription, which AKS fills {@code aadProfile.tenantID} with. */
+    private String tenantOf(AzureRequest req) {
+        return req.scope() != null && req.scope().tenantId() != null
+                ? req.scope().tenantId() : config.services().entra().defaultTenantId();
+    }
+
     private ManagedCluster newCluster(String sub, String rg, String clusterName) {
         ManagedCluster cluster = new ManagedCluster();
         cluster.setInstanceId(UUID.randomUUID().toString().replace("-", "").substring(0, 8));
@@ -374,6 +394,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         }
         if (props.has("disableLocalAccounts")) {
             cluster.setDisableLocalAccounts(props.path("disableLocalAccounts").asBoolean());
+        }
+        if (props.hasNonNull("aadProfile")) {
+            cluster.setAadProfile(AksEntra.apply(cluster.getAadProfile(), props.path("aadProfile"), tenantOf(req)));
         }
         cluster.setEchoedProperties(echoedProperties(cluster.getEchoedProperties(), props));
 
@@ -893,7 +916,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     /**
      * The kubeconfig of the cluster's user or admin credential. Without Microsoft Entra integration both carry a
      * cluster-admin client certificate, as on AKS; {@code disableLocalAccounts} refuses the admin one with the error
-     * AKS returns.
+     * AKS returns, and the user one too when Entra integration is off ({@code local-accounts.md}: "any attempt to
+     * authenticate with user or admin credentials will fail").
      */
     private Response handleListCredentials(String sub, String rg, String clusterName, boolean admin) {
         Optional<ManagedCluster> found = getCluster(clusterId(sub, rg, clusterName));
@@ -901,7 +925,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
             return notFound("Managed cluster '" + clusterName + "' not found.");
         }
         ManagedCluster cluster = found.get();
-        if (admin && cluster.localAccountsDisabled()) {
+        if (cluster.localAccountsDisabled() && (admin || !cluster.entraEnabled())) {
             return ArmErrors.error(400, "BadRequest", "Getting static credential is not allowed because this"
                     + " cluster is set to disable local accounts.");
         }
@@ -1088,6 +1112,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (cluster.getDisableLocalAccounts() != null) {
             props.put("disableLocalAccounts", cluster.getDisableLocalAccounts());
         }
+        if (cluster.getAadProfile() != null) {
+            props.put("aadProfile", AksEntra.toArm(cluster.getAadProfile()));
+        }
         if (cluster.getNetworkProfile() != null) {
             props.put("networkProfile", networkProfileProperties(cluster.getNetworkProfile()));
         }
@@ -1193,7 +1220,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     private static Map<String, Object> echoedProperties(Map<String, Object> previous, JsonNode props) {
         Map<String, Object> echoed = previous == null ? new LinkedHashMap<>() : new LinkedHashMap<>(previous);
-        for (String field : List.of("aadProfile", "oidcIssuerProfile", "securityProfile", "apiServerAccessProfile",
+        for (String field : List.of("oidcIssuerProfile", "securityProfile", "apiServerAccessProfile",
                 "addonProfiles", "autoUpgradeProfile", "autoScalerProfile", "linuxProfile", "windowsProfile",
                 "workloadAutoScalerProfile", "storageProfile", "ingressProfile", "azureMonitorProfile",
                 "identityProfile", "httpProxyConfig")) {

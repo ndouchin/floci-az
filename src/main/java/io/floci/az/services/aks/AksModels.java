@@ -32,6 +32,7 @@ public class AksModels {
         private String fqdn;
         private String nodeResourceGroup;
         private Boolean disableLocalAccounts;
+        private AadProfile aadProfile;
         private NetworkProfile networkProfile;
         /** Request objects the emulator stores and echoes without acting on them (aadProfile, oidcIssuerProfile...). */
         private Map<String, Object> echoedProperties;
@@ -101,6 +102,14 @@ public class AksModels {
         public Boolean getDisableLocalAccounts() { return disableLocalAccounts; }
         public void setDisableLocalAccounts(Boolean disableLocalAccounts) {
             this.disableLocalAccounts = disableLocalAccounts;
+        }
+
+        public AadProfile getAadProfile() { return aadProfile; }
+        public void setAadProfile(AadProfile aadProfile) { this.aadProfile = aadProfile; }
+
+        /** Whether managed Microsoft Entra integration is on. */
+        public boolean entraEnabled() {
+            return aadProfile != null && aadProfile.managed();
         }
 
         public NetworkProfile getNetworkProfile() { return networkProfile; }
@@ -183,6 +192,58 @@ public class AksModels {
             return String.format(
                 "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
                 subscriptionId, resourceGroup, name);
+        }
+    }
+
+    /**
+     * {@code ManagedClusterAADProfile}: managed Entra integration, Azure RBAC and the admin groups, plus the deprecated
+     * legacy fields, kept so clients read back what they sent. {@code serverAppSecret} is write-only.
+     */
+    @RegisterForReflection
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class AadProfile {
+        private Boolean managed;
+        private Boolean enableAzureRBAC;
+        private List<String> adminGroupObjectIDs;
+        private String tenantID;
+        private String clientAppID;
+        private String serverAppID;
+        private String serverAppSecret;
+
+        public Boolean getManaged() { return managed; }
+        public void setManaged(Boolean managed) { this.managed = managed; }
+
+        public Boolean getEnableAzureRBAC() { return enableAzureRBAC; }
+        public void setEnableAzureRBAC(Boolean enableAzureRBAC) { this.enableAzureRBAC = enableAzureRBAC; }
+
+        public List<String> getAdminGroupObjectIDs() { return adminGroupObjectIDs; }
+        public void setAdminGroupObjectIDs(List<String> adminGroupObjectIDs) {
+            this.adminGroupObjectIDs = adminGroupObjectIDs;
+        }
+
+        public String getTenantID() { return tenantID; }
+        public void setTenantID(String tenantID) { this.tenantID = tenantID; }
+
+        public String getClientAppID() { return clientAppID; }
+        public void setClientAppID(String clientAppID) { this.clientAppID = clientAppID; }
+
+        public String getServerAppID() { return serverAppID; }
+        public void setServerAppID(String serverAppID) { this.serverAppID = serverAppID; }
+
+        public String getServerAppSecret() { return serverAppSecret; }
+        public void setServerAppSecret(String serverAppSecret) { this.serverAppSecret = serverAppSecret; }
+
+        public boolean managed() {
+            return Boolean.TRUE.equals(managed);
+        }
+
+        public boolean azureRbac() {
+            return Boolean.TRUE.equals(enableAzureRBAC);
+        }
+
+        public List<String> adminGroups() {
+            return adminGroupObjectIDs == null ? List.of() : adminGroupObjectIDs;
         }
     }
 

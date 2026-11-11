@@ -281,7 +281,7 @@ class AksDockerTest {
         JsonNode classes = kube.get("/apis/storage.k8s.io/v1/storageclasses").path("items");
         Map<String, JsonNode> byName = new TreeMap<>();
         classes.forEach(c -> byName.put(c.path("metadata").path("name").asText(), c));
-        assertEquals(Set.of("default", "managed-csi", "managed-csi-premium", "managed-csi-premium-v2",
+        assertEquals(Set.of("default", "managed-csi", "managed-csi-premium", "managed-csi-premium-v2", "managed",
                 "managed-premium", "azurefile-csi", "azurefile-csi-premium", "azurefile", "azurefile-premium"),
                 byName.keySet());
         assertEquals("true", byName.get("default").path("metadata").path("annotations")

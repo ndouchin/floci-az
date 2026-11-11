@@ -51,7 +51,10 @@ final class AksStorageManifests {
                     List.of("skuname: PremiumV2_LRS", "cachingMode: None"), false));
         }
         classes.addAll(List.of(
-                new StorageClass("managed-premium", disk, wait, List.of("storageaccounttype: Premium_LRS"), false),
+                new StorageClass("managed", disk, wait,
+                        List.of("cachingmode: ReadOnly", "kind: Managed", "storageaccounttype: StandardSSD_LRS"), false),
+                new StorageClass("managed-premium", disk, wait,
+                        List.of("cachingmode: ReadOnly", "kind: Managed", "storageaccounttype: Premium_LRS"), false),
                 new StorageClass("azurefile-csi", file, immediate, List.of("skuName: Standard_LRS"), false),
                 new StorageClass("azurefile-csi-premium", file, immediate, List.of("skuName: Premium_LRS"), false),
                 new StorageClass("azurefile", file, immediate, List.of("skuName: Standard_LRS"), false),
@@ -65,7 +68,8 @@ final class AksStorageManifests {
             yaml.append("  annotations:\n    storageclass.kubernetes.io/is-default-class: \"true\"\n");
         }
         yaml.append("  name: ").append(sc.name()).append("\n")
-                .append("  labels:\n    kubernetes.io/cluster-service: \"true\"\n")
+                .append("  labels:\n    addonmanager.kubernetes.io/mode: EnsureExists\n")
+                .append("    kubernetes.io/cluster-service: \"true\"\n")
                 .append("provisioner: ").append(sc.provisioner()).append("\n")
                 .append("parameters:\n");
         sc.parameters().forEach(p -> yaml.append("  ").append(p).append("\n"));

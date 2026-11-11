@@ -40,13 +40,25 @@ class AksStorageManifestsTest {
     void theClassesAksCreatesAreThereWithTheirCsiDrivers() {
         String yaml = AksStorageManifests.manifest(V134);
 
-        assertEquals(List.of("default", "managed-csi", "managed-csi-premium", "managed-premium", "azurefile-csi",
-                "azurefile-csi-premium", "azurefile", "azurefile-premium"), storageClassNames(yaml));
+        assertEquals(List.of("default", "managed-csi", "managed-csi-premium", "managed", "managed-premium",
+                "azurefile-csi", "azurefile-csi-premium", "azurefile", "azurefile-premium"), storageClassNames(yaml));
         assertTrue(storageClass(yaml, "managed-csi").contains("provisioner: disk.csi.azure.com"));
         assertTrue(storageClass(yaml, "managed-csi").contains("skuname: StandardSSD_LRS"));
         assertTrue(storageClass(yaml, "managed-csi-premium").contains("skuname: Premium_LRS"));
         assertTrue(storageClass(yaml, "azurefile-csi").contains("provisioner: file.csi.azure.com"));
         assertTrue(storageClass(yaml, "azurefile-csi-premium").contains("skuName: Premium_LRS"));
+        assertTrue(storageClass(yaml, "managed-premium").contains(
+                "  cachingmode: ReadOnly\n  kind: Managed\n  storageaccounttype: Premium_LRS\n"));
+    }
+
+    @Test
+    void classesCarryTheAddonManagerLabelsAksSets() {
+        String yaml = AksStorageManifests.manifest(V136);
+
+        for (String name : storageClassNames(yaml)) {
+            assertTrue(storageClass(yaml, name).contains("    addonmanager.kubernetes.io/mode: EnsureExists\n"), name);
+            assertTrue(storageClass(yaml, name).contains("    kubernetes.io/cluster-service: \"true\"\n"), name);
+        }
     }
 
     @Test

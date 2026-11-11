@@ -37,6 +37,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,6 +94,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     private static final String PROVIDER_PREFIX = "/providers/Microsoft.ContainerService/";
     private static final String DEFAULT_VM_SIZE = "Standard_DS2_v2";
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String GET_VERSIONS_HINT = "Please use [az aks get-versions] command to get the supported"
+            + " version list in this region. For more information, please check https://aka.ms/supported-version-list";
 
     private final EmulatorConfig config;
     private final AksClusterManager clusterManager;
@@ -409,12 +412,16 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (current != null && versions.sameAsCurrent(requested, current)) {
             return current;
         }
-        Version target = versions.resolve(requested).orElseThrow(() -> versionNotSupported(
-                "K8sVersionNotSupported", requested));
+        Version target = versions.resolve(requested).orElseThrow(() -> new AksRequestException(400,
+                "K8sVersionNotSupported", "Managed cluster " + cluster.getName() + " is on version " + requested
+                        + " which is not supported in this region. " + GET_VERSIONS_HINT));
         if (current != null && !AksVersions.upgradeAllowed(current, target)) {
+            List<String> upgrades = new ArrayList<>(versions.upgradesFrom(current).stream()
+                    .map(Version::toString).toList());
+            Collections.reverse(upgrades);
             throw new AksRequestException(400, "OperationNotAllowed", "Upgrading Kubernetes version " + current
-                    + " to " + target + " is not allowed. Available upgrades: " + versions.upgradesFrom(current)
-                    + ". For more information, see https://aka.ms/aks-supported-k8s-ver for version details.");
+                    + " to " + target + " is not allowed. Available upgrades: [" + String.join(" ", upgrades)
+                    + "]. Please see https://aka.ms/aks-supported-k8s-ver for version details.");
         }
         return target;
     }
@@ -463,8 +470,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (existing != null && sameVersion(request.orchestratorVersion(), existing.getCurrentOrchestratorVersion())) {
             return Version.parse(existing.getCurrentOrchestratorVersion()).orElse(controlPlane);
         }
-        Version version = versions.resolve(request.orchestratorVersion()).orElseThrow(() -> versionNotSupported(
-                "AgentPoolK8sVersionNotSupported", request.orchestratorVersion()));
+        Version version = versions.resolve(request.orchestratorVersion()).orElseThrow(() -> new AksRequestException(
+                400, "AgentPoolK8sVersionNotSupported", "Version " + request.orchestratorVersion()
+                        + " is not supported in this region. " + GET_VERSIONS_HINT));
         checkSkew(version, controlPlane);
         return version;
     }
@@ -479,14 +487,8 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                             + controlPlane.minor() + ".";
             throw new AksRequestException(400, "NodePoolMcVersionIncompatible", "Node pool version " + pool
                     + " and control plane version " + controlPlane + " are incompatible. " + detail
-                    + " For more information, see https://aka.ms/aks/UpgradeVersionRules.");
+                    + " For more information, please check https://aka.ms/aks/UpgradeVersionRules");
         });
-    }
-
-    private AksRequestException versionNotSupported(String code, String requested) {
-        return new AksRequestException(400, code, "Version " + requested + " is not supported in this region."
-                + " Please use [az aks get-versions] command to get the supported version list in this region."
-                + " For more information, see https://aka.ms/supported-version-list.");
     }
 
     private Version currentVersion(ManagedCluster cluster) {

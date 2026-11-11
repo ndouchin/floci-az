@@ -71,7 +71,9 @@ class AksVersionsApiTest {
     void anUnsupportedVersionIsRefused() {
         put("v2", "1.29").then().statusCode(400)
                 .body("error.code", equalTo("K8sVersionNotSupported"))
-                .body("error.message", containsString("Version 1.29 is not supported in this region"));
+                .body("error.message", equalTo("Managed cluster v2 is on version 1.29 which is not supported in this"
+                        + " region. Please use [az aks get-versions] command to get the supported version list in this"
+                        + " region. For more information, please check https://aka.ms/supported-version-list"));
         given().get(CLUSTERS + "v2" + API).then().statusCode(404);
     }
 
@@ -82,7 +84,9 @@ class AksVersionsApiTest {
 
         put("v3", "1.37").then().statusCode(400)
                 .body("error.code", equalTo("OperationNotAllowed"))
-                .body("error.message", containsString("Upgrading Kubernetes version 1.35.10 to 1.37.2 is not allowed"));
+                .body("error.message", equalTo("Upgrading Kubernetes version 1.35.10 to 1.37.2 is not allowed."
+                        + " Available upgrades: [1.36.6]. Please see https://aka.ms/aks-supported-k8s-ver for version"
+                        + " details."));
         put("v3", "1.34").then().statusCode(400).body("error.code", equalTo("OperationNotAllowed"));
         put("v3", "1.36").then().statusCode(200).body("properties.currentKubernetesVersion", equalTo("1.36.6"));
     }
@@ -119,7 +123,9 @@ class AksVersionsApiTest {
                 .put(CLUSTERS + "v6/agentPools/userpool" + API)
                 .then().statusCode(400)
                 .body("error.code", equalTo("NodePoolMcVersionIncompatible"))
-                .body("error.message", containsString("is bigger than control plane version"));
+                .body("error.message", equalTo("Node pool version 1.36.6 and control plane version 1.35.10 are"
+                        + " incompatible. Minor version of node pool version 36 is bigger than control plane version"
+                        + " 35. For more information, please check https://aka.ms/aks/UpgradeVersionRules"));
         given().contentType("application/json")
                 .body("{\"properties\":{\"count\":1,\"mode\":\"User\",\"orchestratorVersion\":\"1.34\"}}")
                 .put(CLUSTERS + "v6/agentPools/userpool" + API)
@@ -136,7 +142,10 @@ class AksVersionsApiTest {
         given().contentType("application/json")
                 .body("{\"properties\":{\"count\":1,\"orchestratorVersion\":\"1.30\"}}")
                 .put(CLUSTERS + "v7/agentPools/userpool" + API)
-                .then().statusCode(400).body("error.code", equalTo("AgentPoolK8sVersionNotSupported"));
+                .then().statusCode(400).body("error.code", equalTo("AgentPoolK8sVersionNotSupported"))
+                .body("error.message", equalTo("Version 1.30 is not supported in this region. Please use"
+                        + " [az aks get-versions] command to get the supported version list in this region. For more"
+                        + " information, please check https://aka.ms/supported-version-list"));
     }
 
     @Test

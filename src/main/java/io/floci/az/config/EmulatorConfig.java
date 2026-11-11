@@ -353,6 +353,7 @@ public interface EmulatorConfig {
         MariaDbServiceConfig   mariaDb();
         ServiceBusConfig       serviceBus();
         AksConfig              aks();
+        AroConfig              aro();
         AciConfig              aci();
         VmConfig               vm();
         ApimConfig             apim();
@@ -632,7 +633,7 @@ public interface EmulatorConfig {
         /**
          * Start of the host port range for published container-group ports (non-mocked mode).
          * 7500-7599 is chosen clear of the other sidecar ranges: acr 5000-5099, amqp 5671-5674,
-         * redis 6379-6399, aks 6443-7443, kafka 9093.
+         * redis 6379-6399, aks 6443-7443, aro 7600-7699, kafka 9093.
          */
         @WithDefault("7500")
         int basePort();
@@ -739,6 +740,57 @@ public interface EmulatorConfig {
         int apiServerMaxPort();
 
         /** When {@code true}, k3s containers are left running when floci-az shuts down. */
+        @WithDefault("false")
+        boolean keepRunningOnShutdown();
+    }
+
+    /** Azure Red Hat OpenShift ({@code Microsoft.RedHatOpenShift}): clusters backed by MicroShift containers. */
+    interface AroConfig {
+        @WithDefault("true")
+        boolean enabled();
+
+        /**
+         * When {@code true}, no MicroShift container is started; clusters reach {@code Succeeded} at once with a
+         * synthetic kubeconfig.
+         */
+        @WithDefault("false")
+        boolean mocked();
+
+        /**
+         * Repository of the MicroShift images (MINC builds of OKD). The tag is the entry of {@link #versions()} for
+         * the requested minor, suffixed with {@code -arm64} or {@code -amd64} after the Docker daemon's architecture.
+         */
+        @WithDefault("quay.io/minc-org/minc")
+        String imageRepository();
+
+        /**
+         * The OpenShift minors clusters can be created at, each as {@code minor=tag}. Only these are advertised by
+         * {@code openShiftVersions}.
+         */
+        @WithDefault("4.19=4.19.0-okd-scos.17")
+        List<String> versions();
+
+        /** Start of the host port range for the API server and the router's HTTP and HTTPS ports. */
+        @WithDefault("7600")
+        int basePort();
+
+        /** End of the host port range. */
+        @WithDefault("7699")
+        int maxPort();
+
+        /** How long a cluster may stay {@code Creating} before it ends {@code Failed}. */
+        @WithDefault("900")
+        int readyTimeoutSeconds();
+
+        /** Image of the provisioner behind the {@code managed-csi} and {@code azurefile-csi} storage classes. */
+        @WithDefault("docker.io/rancher/local-path-provisioner:v0.0.37")
+        String storageProvisionerImage();
+
+        /** Image of the helper pods the provisioner runs to create and remove volume directories. */
+        @WithDefault("docker.io/library/busybox:1.37")
+        String storageHelperImage();
+
+        /** When {@code true}, MicroShift containers are left running when floci-az shuts down. */
         @WithDefault("false")
         boolean keepRunningOnShutdown();
     }

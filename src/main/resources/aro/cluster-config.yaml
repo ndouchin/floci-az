@@ -1,0 +1,25 @@
+apiVersion: config.openshift.io/v1
+kind: ClusterVersion
+metadata:
+  name: version
+spec:
+  clusterID: ${CLUSTER_ID}
+---
+apiVersion: config.openshift.io/v1
+kind: Infrastructure
+metadata:
+  name: cluster
+spec:
+  cloudConfig:
+    key: config
+    name: cloud-provider-config
+  platformSpec:
+    type: Azure
+    azure: {}
+---
+apiVersion: config.openshift.io/v1
+kind: Ingress
+metadata:
+  name: cluster
+spec:
+  domain: apps.${DOMAIN}

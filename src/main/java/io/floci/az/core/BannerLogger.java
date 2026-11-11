@@ -128,6 +128,14 @@ public class BannerLogger {
                             + "-" + config.services().aks().apiServerMaxPort();
             sb.append(serviceStatusDocker("aks", true, aksInfo));
         }
+        if (config.services().aro().enabled()) {
+            String aroInfo = config.services().aro().mocked()
+                    ? "mocked  (no microshift)"
+                    : "microshift:" + config.services().aro().imageRepository()
+                            + "  ports:" + config.services().aro().basePort()
+                            + "-" + config.services().aro().maxPort();
+            sb.append(serviceStatusDocker("aro", true, aroInfo));
+        }
         if (config.services().aci().enabled()) {
             String aciInfo = config.services().aci().mocked()
                     ? "mocked  (no docker)"

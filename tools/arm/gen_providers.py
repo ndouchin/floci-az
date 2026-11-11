@@ -61,6 +61,7 @@ NAMESPACES = [
     "Microsoft.Network",
     "Microsoft.OperationalInsights",
     "Microsoft.PolicyInsights",
+    "Microsoft.RedHatOpenShift",
     "Microsoft.ResourceGraph",
     "Microsoft.Resources",
     "Microsoft.Sql",

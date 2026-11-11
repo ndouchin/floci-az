@@ -69,6 +69,9 @@ public class ContainerLifecycleManager {
     /** The Docker daemon's hostname for published-mode endpoints; resolved once, on first use. */
     private volatile String daemonHost;
 
+    /** The Docker daemon's CPU architecture; resolved once, on first use. */
+    private volatile String daemonArchitecture;
+
     @Inject
     public ContainerLifecycleManager(DockerClient dockerClient,
                                      ImageCacheService imageCacheService,
@@ -1181,6 +1184,19 @@ public class ContainerLifecycleManager {
             daemonHost = host;
         }
         return host;
+    }
+
+    /**
+     * The Docker daemon's CPU architecture as it reports it ({@code x86_64}, {@code aarch64}), for services whose
+     * image tag names an architecture. Read from the daemon, not the JVM, since the two differ with a remote daemon.
+     */
+    public String daemonArchitecture() {
+        String architecture = daemonArchitecture;
+        if (architecture == null) {
+            architecture = dockerClient.infoCmd().exec().getArchitecture();
+            daemonArchitecture = architecture;
+        }
+        return architecture;
     }
 
     /**

@@ -92,6 +92,7 @@ nav:
     - Azure Database for MySQL: services/mysql.md
     - Azure Database for MariaDB: services/mariadb.md
     - Azure Kubernetes Service: services/aks.md
+    - Azure Red Hat OpenShift: services/aro.md
     - Azure Container Apps: services/container-apps.md
     - API Management: services/apim.md
     - Virtual Network: services/network.md

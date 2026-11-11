@@ -2960,6 +2960,39 @@
       ]
     },
     {
+      "namespace": "Microsoft.RedHatOpenShift",
+      "resourceTypes": [
+        {
+          "resourceType": "locations/openShiftVersions",
+          "apiVersions": ["2025-07-25", "2024-08-12-preview"]
+        },
+        {
+          "resourceType": "locations/platformWorkloadIdentityRoleSets",
+          "apiVersions": ["2025-07-25", "2024-08-12-preview"]
+        },
+        {
+          "resourceType": "openShiftClusters",
+          "apiVersions": ["2025-07-25", "2024-08-12-preview", "2023-11-22", "2023-09-04", "2023-07-01-preview", "2023-04-01", "2022-09-04", "2022-04-01", "2021-09-01-preview", "2020-04-30"]
+        },
+        {
+          "resourceType": "openshiftclusters/machinePool",
+          "apiVersions": ["2023-11-22", "2023-09-04", "2023-07-01-preview", "2023-04-01", "2022-09-04"]
+        },
+        {
+          "resourceType": "openshiftclusters/secret",
+          "apiVersions": ["2023-11-22", "2023-09-04", "2023-07-01-preview", "2023-04-01", "2022-09-04"]
+        },
+        {
+          "resourceType": "openshiftclusters/syncIdentityProvider",
+          "apiVersions": ["2023-11-22", "2023-09-04", "2023-07-01-preview", "2023-04-01", "2022-09-04"]
+        },
+        {
+          "resourceType": "openshiftclusters/syncSet",
+          "apiVersions": ["2023-11-22", "2023-09-04", "2023-07-01-preview", "2023-04-01", "2022-09-04"]
+        }
+      ]
+    },
+    {
       "namespace": "Microsoft.ResourceGraph",
       "resourceTypes": [
         {

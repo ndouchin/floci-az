@@ -303,6 +303,28 @@ class AksLifecycleRealModeTest {
     }
 
     @Test
+    @DisplayName("a GPU pool's nodes advertise nvidia.com/gpu once Ready")
+    void gpuNodesAdvertiseTheirGpus() {
+        apiReady.set(true);
+        create("gpu1", """
+                {"location":"eastus","properties":{"agentPoolProfiles":[
+                  {"name":"system","count":1,"mode":"System"},
+                  {"name":"gpu","count":1,"mode":"User","vmSize":"Standard_NC64as_T4_v3"}]}}
+                """).then().statusCode(201);
+        awaitState("gpu1", "Succeeded");
+
+        ArgumentCaptor<String[]> kubectl = ArgumentCaptor.forClass(String[].class);
+        verify(clusterManager, atLeast(1)).kubectl(any(), kubectl.capture());
+        List<String> patches = kubectl.getAllValues().stream().map(args -> String.join(" ", args))
+                .filter(c -> c.startsWith("patch node ")).toList();
+        assertEquals(1, patches.size(), patches.toString());
+        assertTrue(patches.getFirst().matches("patch node aks-gpu-\\d{8}-vmss000000 --subresource=status"
+                + " --type=merge -p \\{\"status\":\\{\"capacity\":\\{\"nvidia.com/gpu\":\"4\"},"
+                + "\"allocatable\":\\{\"nvidia.com/gpu\":\"4\"}}}"),
+                patches.getFirst());
+    }
+
+    @Test
     @DisplayName("a node label under a reserved prefix is refused")
     void reservedLabelsAreRefused() {
         create("pools3", "{\"location\":\"eastus\",\"properties\":{\"agentPoolProfiles\":["

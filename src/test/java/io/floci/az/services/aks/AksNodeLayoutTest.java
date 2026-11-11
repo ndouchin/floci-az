@@ -85,6 +85,26 @@ class AksNodeLayoutTest {
     }
 
     @Test
+    void aGpuSizeCarriesTheAcceleratorLabels() {
+        AgentPoolProfile gpu = pool("gpu", "User", 1);
+        gpu.setVmSize("Standard_NC4as_T4_v3");
+
+        Map<String, String> labels = AksNodeLayout.labels(cluster(), gpu, 0, AksVmSizes.of("Standard_NC4as_T4_v3"));
+
+        assertEquals("nvidia", labels.get("kubernetes.azure.com/accelerator"));
+        assertEquals("nvidia", labels.get("accelerator"));
+    }
+
+    @Test
+    void aCpuSizeHasNoAcceleratorLabel() {
+        Map<String, String> labels = AksNodeLayout.labels(cluster(), pool("cpu", "User", 1), 0,
+                AksVmSizes.of("Standard_D4s_v5"));
+
+        assertFalse(labels.containsKey("kubernetes.azure.com/accelerator"));
+        assertFalse(labels.containsKey("accelerator"));
+    }
+
+    @Test
     void aSystemPoolIsLabelledSystem() {
         assertEquals("system", AksNodeLayout.labels(cluster(), pool("sys", "System", 1), 0,
                 AksVmSizes.of("Standard_DS2_v2")).get("kubernetes.azure.com/mode"));

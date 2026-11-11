@@ -154,7 +154,8 @@ final class AksClusterRuntime {
     /**
      * Applies the pool's labels to its running nodes, and removes the user labels and taints a previous request
      * set that this one dropped. Run after the nodes are Ready: k3s's cloud controller rewrites the instance-type
-     * labels when it initializes a node, so they are set again here.
+     * labels when it initializes a node, so they are set again here. A GPU size's nodes get their
+     * {@code nvidia.com/gpu} capacity, which the kubelet keeps since no device plugin manages it.
      */
     private void applyLabelsAndTaints(ManagedCluster cluster, AgentPoolProfile pool, String hash, int desired,
                                       AksReconciler.Persistence persistence) {
@@ -173,6 +174,11 @@ final class AksClusterRuntime {
             }
             for (String taint : pool.taints()) {
                 manager.kubectl(cluster, "taint", "node", nodeName, taint, "--overwrite");
+            }
+            if (size.gpus() > 0) {
+                String gpus = "{\"nvidia.com/gpu\":\"" + size.gpus() + "\"}";
+                manager.kubectl(cluster, "patch", "node", nodeName, "--subresource=status", "--type=merge", "-p",
+                        "{\"status\":{\"capacity\":" + gpus + ",\"allocatable\":" + gpus + "}}");
             }
             for (String taint : appliedTaints) {
                 if (!pool.taints().contains(taint)) {

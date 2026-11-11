@@ -11,7 +11,7 @@ import static java.util.Map.entry;
  * vCPUs, memory and NVIDIA GPUs of the Azure VM sizes agent pools name, used to size node containers and to tell
  * GPU nodes apart. Listed sizes come from the Azure VM size pages; any other size takes its vCPU count from the
  * name (the number after the family letters) and its family's usual memory per vCPU (8 GiB for E, 2 GiB for F,
- * 4 GiB otherwise), and the N families count one GPU.
+ * 4 GiB otherwise), and the N families count one NVIDIA GPU, except the AMD ones (NVv4, MI300X).
  */
 final class AksVmSizes {
 
@@ -47,6 +47,7 @@ final class AksVmSizes {
             entry("standard_nv72ads_a10_v5", new VmSize(72, 880, 2)));
 
     private static final Pattern NAME = Pattern.compile("standard_([a-z]+?)(\\d+)[a-z]*(?:_.*)?");
+    private static final Pattern AMD_GPU = Pattern.compile("standard_nv\\d+as_v4|.*_mi\\d+x?_.*");
     private static final double GIB_PER_VCPU = 4;
     private static final Map<Character, Double> FAMILY_GIB_PER_VCPU = Map.of('e', 8d, 'f', 2d);
 
@@ -68,7 +69,7 @@ final class AksVmSizes {
         }
         int vcpus = Integer.parseInt(m.group(2));
         char family = m.group(1).charAt(0);
-        int gpus = family == 'n' ? 1 : 0;
+        int gpus = family == 'n' && !AMD_GPU.matcher(key).matches() ? 1 : 0;
         return new VmSize(vcpus, vcpus * FAMILY_GIB_PER_VCPU.getOrDefault(family, GIB_PER_VCPU), gpus);
     }
 }

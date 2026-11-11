@@ -36,6 +36,12 @@ class AksVmSizesTest {
     }
 
     @Test
+    void amdGpuSizesHaveNoNvidiaGpu() {
+        assertEquals(0, AksVmSizes.of("Standard_NV16as_v4").gpus());
+        assertEquals(0, AksVmSizes.of("Standard_ND96isr_MI300X_v5").gpus());
+    }
+
+    @Test
     void anUnparseableSizeFallsBackToTheDefaultSize() {
         assertEquals(new VmSize(2, 7, 0), AksVmSizes.of("whatever"));
         assertEquals(new VmSize(2, 7, 0), AksVmSizes.of(null));

@@ -72,6 +72,10 @@ final class AksNodeLayout {
         labels.put("beta.kubernetes.io/instance-type", pool.getVmSize());
         labels.put("topology.kubernetes.io/region", cluster.getLocation());
         labels.put("topology.kubernetes.io/zone", zone(cluster, pool, index));
+        if (size.gpus() > 0) {
+            labels.put("kubernetes.azure.com/accelerator", "nvidia");
+            labels.put("accelerator", "nvidia");
+        }
         labels.putAll(pool.labels());
         return labels;
     }

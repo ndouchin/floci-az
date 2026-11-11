@@ -146,7 +146,8 @@ class AksDockerTest {
                       {"name": "userpool", "count": 2, "vmSize": "Standard_D2s_v5", "mode": "User",
                        "nodeLabels": {"team": "payments"}, "nodeTaints": ["dedicated=batch:NoSchedule"],
                        "availabilityZones": ["1", "2"]},
-                      {"name": "zeropool", "count": 0, "vmSize": "Standard_D2s_v5", "mode": "User"}
+                      {"name": "zeropool", "count": 0, "vmSize": "Standard_D2s_v5", "mode": "User"},
+                      {"name": "gpupool", "count": 1, "vmSize": "Standard_NC4as_T4_v3", "mode": "User"}
                     ]
                   }
                 }
@@ -193,10 +194,10 @@ class AksDockerTest {
     @DisplayName("agent pools are AKS-named nodes with AKS labels, taints and provider IDs; count 0 has none")
     void agentPoolsAreNodes() throws Exception {
         JsonNode nodes = nodes();
-        assertEquals(3, nodes.size(), nodes.toString());
+        assertEquals(4, nodes.size(), nodes.toString());
         for (JsonNode node : nodes) {
             String name = node.path("metadata").path("name").asText();
-            assertTrue(name.matches("aks-(nodepool1|userpool)-\\d{8}-vmss00000[01]"), name);
+            assertTrue(name.matches("aks-(nodepool1|userpool|gpupool)-\\d{8}-vmss00000[01]"), name);
             assertTrue(node.path("spec").path("providerID").asText().startsWith("azure:///subscriptions/" + SUB
                     + "/resourceGroups/MC_" + RG + "_" + NAME + "_eastus/providers/Microsoft.Compute"
                     + "/virtualMachineScaleSets/"), node.path("spec").path("providerID").asText());
@@ -225,7 +226,29 @@ class AksDockerTest {
         assertTrue(user1.path("status").path("nodeInfo").path("kubeletVersion").asText().startsWith("v1.35.10"));
 
         assertEquals(1, containers("server").size());
-        assertEquals(3, containers("agent").size());
+        assertEquals(4, containers("agent").size());
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("a GPU size's node carries the accelerator label and nvidia.com/gpu, and a GPU pod schedules on it")
+    void gpuNodesAdvertiseGpus() throws Exception {
+        JsonNode gpu = node(nodes(), "aks-gpupool-", "vmss000000");
+        assertEquals("nvidia", gpu.path("metadata").path("labels").path("kubernetes.azure.com/accelerator").asText());
+        assertEquals("Standard_NC4as_T4_v3",
+                gpu.path("metadata").path("labels").path("node.kubernetes.io/instance-type").asText());
+        assertEquals("1", gpu.path("status").path("capacity").path("nvidia.com/gpu").asText());
+        assertEquals("1", gpu.path("status").path("allocatable").path("nvidia.com/gpu").asText());
+
+        KubeconfigClient kube = KubeconfigClient.fromBase64(adminKubeconfig);
+        assertEquals(201, kube.send("POST", "/api/v1/namespaces/default/pods", """
+                {"apiVersion":"v1","kind":"Pod","metadata":{"name":"gpu-job"},
+                 "spec":{"restartPolicy":"Never","containers":[{"name":"g","image":"%s","command":["true"],
+                   "resources":{"limits":{"nvidia.com/gpu":"1"}}}]}}""".formatted(AksStorageManifests.HELPER_IMAGE)));
+        AksTestPolling.until(Duration.ofMinutes(3), () -> "Succeeded".equals(
+                phase(kube, "/api/v1/namespaces/default/pods/gpu-job")));
+        assertEquals(gpu.path("metadata").path("name").asText(),
+                kube.get("/api/v1/namespaces/default/pods/gpu-job").path("spec").path("nodeName").asText());
     }
 
     private static final String PVC_PATH = "/api/v1/namespaces/default/persistentvolumeclaims";
@@ -239,7 +262,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("the AKS storage classes exist, default is the default, and disk and file claims bind")
     void storageClassesBind() throws Exception {
         KubeconfigClient kube = KubeconfigClient.fromBase64(adminKubeconfig);
@@ -276,7 +299,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("scaling a pool through the agent pool API removes its highest-index node")
     void scalingAPoolRemovesNodes() throws Exception {
         Response scaled = given().contentType("application/json")
@@ -286,13 +309,13 @@ class AksDockerTest {
         awaitOperation(scaled);
 
         JsonNode nodes = nodes();
-        assertEquals(2, nodes.size(), nodes.toString());
+        assertEquals(3, nodes.size(), nodes.toString());
         node(nodes, "aks-userpool-", "vmss000000");
-        assertEquals(2, containers("agent").size());
+        assertEquals(3, containers("agent").size());
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("stop stops the containers and start brings the same cluster back")
     void stopAndStart() {
         Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
@@ -311,11 +334,11 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
     void restoreRecreatesALostServerOnItsVolume() {
         String lost = containers("server").getFirst().getId();
-        docker.removeContainerCmd(lost).withForce(true).exec();
+        docker.removeContainerCmd(lost).withForce(true).withRemoveVolumes(true).exec();
 
         handler.restorePersistedClusters();
 
@@ -325,7 +348,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("changing kubernetesVersion upgrades the server and the nodes, the old kubeconfig keeps working")
     void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
         Response upgraded = given().contentType("application/json")
@@ -342,7 +365,7 @@ class AksDockerTest {
         AksTestPolling.until(Duration.ofMinutes(2), () -> {
             try {
                 JsonNode nodes = nodes();
-                boolean allUpgraded = nodes.size() == 2;
+                boolean allUpgraded = nodes.size() == 3;
                 for (JsonNode node : nodes) {
                     allUpgraded &= node.path("status").path("nodeInfo").path("kubeletVersion").asText()
                             .startsWith("v1.36.6");

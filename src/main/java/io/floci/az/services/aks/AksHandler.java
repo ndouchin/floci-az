@@ -94,7 +94,6 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     private static final String AGENT_POOL_TYPE = "Microsoft.ContainerService/managedClusters/agentPools";
     private static final String PROVIDER_PREFIX = "/providers/Microsoft.ContainerService/";
     private static final String DEFAULT_VM_SIZE = "Standard_DS2_v2";
-    private static final int DEFAULT_MAX_PODS = 110;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final EmulatorConfig config;
@@ -278,6 +277,10 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
             this.code = code;
         }
 
+        String code() {
+            return code;
+        }
+
         Response response() {
             return ArmErrors.error(status, code, getMessage());
         }
@@ -365,6 +368,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         } else if (!exists) {
             cluster.setTags(new LinkedHashMap<>());
         }
+        if (!exists) {
+            cluster.setNetworkProfile(AksNetwork.resolve(props.path("networkProfile")));
+        }
         if (props.has("disableLocalAccounts")) {
             cluster.setDisableLocalAccounts(props.path("disableLocalAccounts").asBoolean());
         }
@@ -382,12 +388,13 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 return created;
             });
             Version poolVersion = poolVersionFor(request, existingPool.orElse(null), controlPlane, upgrading);
-            applyPoolRequest(pool, request, existingPool.isEmpty(), poolVersion);
+            applyPoolRequest(pool, request, existingPool.isEmpty(), poolVersion, defaultMaxPods(cluster));
         }
         if (upgrading) {
             for (AgentPoolProfile pool : cluster.pools()) {
                 if (poolRequests.stream().noneMatch(r -> r.name().equals(pool.getName()))) {
-                    applyPoolRequest(pool, PoolRequest.defaults(pool.getName()), false, controlPlane);
+                    applyPoolRequest(pool, PoolRequest.defaults(pool.getName()), false, controlPlane,
+                            defaultMaxPods(cluster));
                 }
             }
         }
@@ -559,14 +566,18 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         return pools;
     }
 
+    private static int defaultMaxPods(ManagedCluster cluster) {
+        return AksNetwork.defaultMaxPods(cluster.getNetworkProfile());
+    }
+
     private static void applyPoolRequest(AgentPoolProfile pool, PoolRequest request, boolean isNew,
-                                         Version version) {
+                                         Version version, int defaultMaxPods) {
         pool.setCount(request.count() != null ? request.count() : isNew ? 1 : pool.getCount());
         pool.setVmSize(firstNonNull(request.vmSize(), pool.getVmSize(), DEFAULT_VM_SIZE));
         pool.setOsType(firstNonNull(request.osType(), pool.getOsType(), "Linux"));
         pool.setOsSku(firstNonNull(request.osSku(), pool.getOsSku(), "Ubuntu"));
         pool.setMode(firstNonNull(request.mode(), pool.getMode(), "System"));
-        pool.setMaxPods(firstNonNull(request.maxPods(), pool.getMaxPods(), DEFAULT_MAX_PODS));
+        pool.setMaxPods(firstNonNull(request.maxPods(), pool.getMaxPods(), defaultMaxPods));
         if (request.enableAutoScaling() != null) {
             pool.setEnableAutoScaling(request.enableAutoScaling());
         }
@@ -962,7 +973,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                     return np;
                 });
                 int previousCount = pool.getCount();
-                applyPoolRequest(pool, request, existing.isEmpty(), version);
+                applyPoolRequest(pool, request, existing.isEmpty(), version, defaultMaxPods(current));
                 if ("Updating".equals(pool.getProvisioningState()) && pool.getCount() != previousCount) {
                     pool.setProvisioningState("Scaling");
                 }
@@ -1065,6 +1076,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (cluster.getDisableLocalAccounts() != null) {
             props.put("disableLocalAccounts", cluster.getDisableLocalAccounts());
         }
+        if (cluster.getNetworkProfile() != null) {
+            props.put("networkProfile", networkProfileProperties(cluster.getNetworkProfile()));
+        }
         if (cluster.getEchoedProperties() != null) {
             cluster.getEchoedProperties().forEach(props::putIfAbsent);
         }
@@ -1089,11 +1103,36 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         return out;
     }
 
+    private static Map<String, Object> networkProfileProperties(AksModels.NetworkProfile profile) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("networkPlugin", profile.getNetworkPlugin());
+        if (profile.getNetworkPluginMode() != null) {
+            out.put("networkPluginMode", profile.getNetworkPluginMode());
+        }
+        if (profile.getNetworkPolicy() != null) {
+            out.put("networkPolicy", profile.getNetworkPolicy());
+        }
+        if (profile.getNetworkDataplane() != null) {
+            out.put("networkDataplane", profile.getNetworkDataplane());
+        }
+        if (profile.getPodCidr() != null) {
+            out.put("podCidr", profile.getPodCidr());
+            out.put("podCidrs", List.of(profile.getPodCidr()));
+        }
+        out.put("serviceCidr", profile.getServiceCidr());
+        out.put("serviceCidrs", List.of(profile.getServiceCidr()));
+        out.put("dnsServiceIP", profile.getDnsServiceIP());
+        out.put("outboundType", profile.getOutboundType());
+        out.put("loadBalancerSku", profile.getLoadBalancerSku());
+        out.put("ipFamilies", List.of("IPv4"));
+        return out;
+    }
+
     private static Map<String, Object> agentPoolProperties(AgentPoolProfile pool) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("count", pool.getCount());
         props.put("vmSize", pool.getVmSize());
-        props.put("maxPods", pool.getMaxPods() != null ? pool.getMaxPods() : DEFAULT_MAX_PODS);
+        props.put("maxPods", pool.getMaxPods() != null ? pool.getMaxPods() : AksNetwork.LEGACY_MAX_PODS);
         props.put("type", "VirtualMachineScaleSets");
         props.put("osType", pool.getOsType());
         props.put("osSKU", pool.getOsSku() != null ? pool.getOsSku() : "Ubuntu");

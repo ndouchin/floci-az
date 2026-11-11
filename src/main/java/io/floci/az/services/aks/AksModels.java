@@ -194,6 +194,7 @@ public class AksModels {
         private String networkPlugin;
         private String networkPluginMode;
         private String networkPolicy;
+        private String networkDataplane;
         private String podCidr;
         private String serviceCidr;
         private String dnsServiceIP;
@@ -208,6 +209,9 @@ public class AksModels {
 
         public String getNetworkPolicy() { return networkPolicy; }
         public void setNetworkPolicy(String networkPolicy) { this.networkPolicy = networkPolicy; }
+
+        public String getNetworkDataplane() { return networkDataplane; }
+        public void setNetworkDataplane(String networkDataplane) { this.networkDataplane = networkDataplane; }
 
         public String getPodCidr() { return podCidr; }
         public void setPodCidr(String podCidr) { this.podCidr = podCidr; }

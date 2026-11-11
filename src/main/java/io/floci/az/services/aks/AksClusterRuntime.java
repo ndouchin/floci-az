@@ -35,13 +35,14 @@ final class AksClusterRuntime {
      * k3s server arguments. The server runs no kubelet, so only agent pool nodes register, and reaches the kubelets
      * through the agents' tunnels. k3s's own local-path storage gives way to the AKS storage classes. The API
      * certificate must be valid for every host the cluster is addressed by: {@code localhost} always, the container
-     * name agents join by, plus the Docker daemon's host in published mode.
+     * name agents join by, plus the Docker daemon's host in published mode. The network ranges come last.
      */
     List<String> serverArgs(ManagedCluster cluster) {
         List<String> args = new ArrayList<>(List.of("server", "--disable-agent", "--egress-selector-mode=cluster",
                 "--disable=traefik", "--disable=local-storage", "--tls-san=localhost",
                 "--tls-san=" + manager.containerName(cluster)));
         manager.daemonTlsSan().ifPresent(san -> args.add("--tls-san=" + san));
+        args.addAll(AksNetwork.serverArgs(cluster.getNetworkProfile()));
         return args;
     }
 

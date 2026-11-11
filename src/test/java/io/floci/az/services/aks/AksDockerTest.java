@@ -35,9 +35,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * AKS with {@code mocked=false}: real k3s containers, driven through the ARM API and checked through the kubeconfig
  * the API hands out. Skipped when no Docker daemon is reachable.
  *
- * <p>Tests are ordered and share one cluster: created on 1.35 with three agent pools, checked node by node, scaled,
- * stopped and started, its server container lost and restored on the same data volume, upgraded to 1.36, then
- * deleted.
+ * <p>Tests are ordered and share one cluster: created on 1.35 with four agent pools (one of them GPU, one empty),
+ * checked node by node, for storage and networking, scaled, stopped and started, its server container lost and
+ * restored on the same data volume, upgraded to 1.36, then deleted.
  */
 @QuarkusTest
 @TestProfile(AksDockerTest.RealModeProfile.class)
@@ -300,6 +300,35 @@ class AksDockerTest {
 
     @Test
     @Order(6)
+    @DisplayName("the AKS default ranges are applied: services in 10.0.0.0/16, DNS at 10.0.0.10, pods in"
+            + " 10.244.0.0/16, and metrics-server serves the metrics API")
+    void networkRangesAndMetricsServer() throws Exception {
+        given().get(CLUSTER_PATH + API).then()
+                .body("properties.networkProfile.networkPlugin", equalTo("azure"))
+                .body("properties.networkProfile.networkPluginMode", equalTo("overlay"))
+                .body("properties.networkProfile.serviceCidr", equalTo("10.0.0.0/16"));
+        KubeconfigClient kube = KubeconfigClient.fromBase64(adminKubeconfig);
+        assertEquals("10.0.0.1", kube.get("/api/v1/namespaces/default/services/kubernetes").path("spec")
+                .path("clusterIP").asText());
+        assertEquals("10.0.0.10", kube.get("/api/v1/namespaces/kube-system/services/kube-dns").path("spec")
+                .path("clusterIP").asText());
+        JsonNode coredns = kube.get("/api/v1/namespaces/kube-system/pods?labelSelector=k8s-app%3Dkube-dns")
+                .path("items");
+        assertFalse(coredns.isEmpty(), coredns.toString());
+        assertTrue(coredns.get(0).path("status").path("podIP").asText().startsWith("10.244."), coredns.toString());
+        AksTestPolling.until(Duration.ofMinutes(3), () -> {
+            try {
+                return kube.get("/apis/apiregistration.k8s.io/v1/apiservices/v1beta1.metrics.k8s.io").path("status")
+                        .path("conditions").toString().contains("\"type\":\"Available\",\"status\":\"True\"")
+                        && kube.get("/apis/metrics.k8s.io/v1beta1/nodes").path("items").size() > 0;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+    }
+
+    @Test
+    @Order(7)
     @DisplayName("scaling a pool through the agent pool API removes its highest-index node")
     void scalingAPoolRemovesNodes() throws Exception {
         Response scaled = given().contentType("application/json")
@@ -315,7 +344,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     @DisplayName("stop stops the containers and start brings the same cluster back")
     void stopAndStart() {
         Response stopped = given().post(CLUSTER_PATH + "/stop" + API);
@@ -334,7 +363,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     @DisplayName("a lost server container is recreated on its data volume at restore, keeping the CA")
     void restoreRecreatesALostServerOnItsVolume() {
         String lost = containers("server").getFirst().getId();
@@ -348,7 +377,7 @@ class AksDockerTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     @DisplayName("changing kubernetesVersion upgrades the server and the nodes, the old kubeconfig keeps working")
     void upgradeRecreatesTheServerOnTheNewImage() throws Exception {
         Response upgraded = given().contentType("application/json")

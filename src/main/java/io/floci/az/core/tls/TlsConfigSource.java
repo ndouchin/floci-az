@@ -204,10 +204,14 @@ public class TlsConfigSource implements ConfigSource {
         List<String> all = new ArrayList<>();
         // host.docker.internal: how function containers reach floci-az when it runs on the host
         // (not in a container).
+        // login.microsoftonline.com, the AKS OIDC issuer hosts and the in-cluster Service name: how the pods of an
+        // emulated AKS cluster reach floci-az's Entra for Workload Identity.
         all.addAll(List.of("localhost", "127.0.0.1", "0.0.0.0", "*.localhost",
                 "localhost.floci-az.io", "*.localhost.floci-az.io",
                 "*.vault.azure.net", "*.managedhsm.azure.net", "*.azurecr.io",
-                "host.docker.internal"));
+                "host.docker.internal",
+                "login.microsoftonline.com", "*.oic.prod-aks.azure.com",
+                "floci-az.kube-system.svc", "floci-az.kube-system.svc.cluster.local"));
         all.addAll(customHostnames);
         return all;
     }

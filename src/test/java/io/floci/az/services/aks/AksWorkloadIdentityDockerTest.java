@@ -2,6 +2,7 @@ package io.floci.az.services.aks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.floci.az.core.tls.TlsConfigSource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
@@ -26,6 +27,7 @@ import java.security.Signature;
 import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -35,8 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Workload Identity on real k3s: the cluster signs service account tokens under its AKS-format issuer, floci-az
- * serves that issuer's discovery document and keys. Skipped when no Docker daemon is reachable.
+ * Workload Identity on real k3s, with floci-az's TLS on as Workload Identity needs: the cluster signs service account
+ * tokens under its AKS-format issuer, floci-az serves that issuer's discovery document and keys, and pods reach
+ * floci-az's Entra as {@code login.microsoftonline.com}. Skipped when no Docker daemon is reachable.
  */
 @QuarkusTest
 @TestProfile(AksWorkloadIdentityDockerTest.RealModeProfile.class)
@@ -45,16 +48,30 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @DisplayName("AKS Workload Identity on real k3s (Docker required)")
 class AksWorkloadIdentityDockerTest {
 
-    /** The cluster calls floci-az back, so the test server listens on floci-az's own port. */
+    /**
+     * floci-az with TLS: its TLS proxy takes floci-az's port and hands HTTP and HTTPS to the internal ports, which the
+     * test server listens on. The TLS config source reads system properties, so the switch is set as one.
+     */
     public static class RealModeProfile implements QuarkusTestProfile {
+        static {
+            System.setProperty(TLS_ENABLED, "true");
+        }
+
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of("floci-az.services.aks.mocked", "false",
-                    "quarkus.http.test-port", "4577");
+                    TLS_ENABLED, "true",
+                    "floci-az.tls.https-port", "0",
+                    "quarkus.http.test-port", "4570",
+                    "quarkus.http.test-ssl-port", "4571");
         }
     }
 
+    private static final String TLS_ENABLED = "floci-az.tls.enabled";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String TENANT = "00000000-0000-0000-0000-000000000002";
+    private static final String CURL_IMAGE = "curlimages/curl:8.11.1";
     private static final String SUB = "test-sub-aks-wi";
     private static final String RG = "test-rg-wi";
     private static final String NAME = "wi-cluster";
@@ -80,7 +97,37 @@ class AksWorkloadIdentityDockerTest {
             AksTestPolling.until(Duration.ofMinutes(2), () -> given().get(CLUSTER_PATH + API).statusCode() == 404);
         } catch (Throwable ignored) {
             // best effort: a failed test may already have removed the cluster
+        } finally {
+            System.clearProperty(TLS_ENABLED);
+            TlsConfigSource.currentCertPem = null;
         }
+    }
+
+    private KubeconfigClient admin() throws Exception {
+        return KubeconfigClient.fromBase64(adminKubeconfig);
+    }
+
+    /** Runs {@code script} in a pod of {@code kube-system} that mounts floci-az's CA, and returns its log. */
+    private String runPod(String name, String script, String serviceAccount, String namespace) throws Exception {
+        String pod = MAPPER.writeValueAsString(Map.of("apiVersion", "v1", "kind", "Pod",
+                "metadata", Map.of("name", name, "labels", Map.of("azure.workload.identity/use", "true")),
+                "spec", Map.of("restartPolicy", "Never", "serviceAccountName", serviceAccount,
+                        "containers", List.of(Map.of("name", "probe", "image", CURL_IMAGE,
+                                "command", List.of("sh", "-c", script),
+                                "volumeMounts", List.of(Map.of("name", "ca", "mountPath", "/ca")))),
+                        "volumes", List.of(Map.of("name", "ca", "configMap", Map.of("name", "floci-az-ca"))))));
+        KubeconfigClient.Reply created = admin().exchange("POST", "/api/v1/namespaces/" + namespace + "/pods", pod);
+        assertEquals(201, created.status(), created.body());
+        AksTestPolling.until(Duration.ofMinutes(4), () -> {
+            try {
+                String phase = admin().get("/api/v1/namespaces/" + namespace + "/pods/" + name)
+                        .path("status").path("phase").asText();
+                return "Succeeded".equals(phase) || "Failed".equals(phase);
+            } catch (Exception e) {
+                return false;
+            }
+        });
+        return admin().text("/api/v1/namespaces/" + namespace + "/pods/" + name + "/log");
     }
 
     private static void awaitOperation(Response accepted) {
@@ -179,5 +226,17 @@ class AksWorkloadIdentityDockerTest {
                 .then().statusCode(200).body("keys[0].kty", equalTo("RSA"));
         given().get(flociIssuerPath() + ".well-known/openid-configuration")
                 .then().statusCode(200).body("issuer", equalTo(issuer));
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("a pod trusts floci-az's CA from floci-az-ca and reaches its Entra as login.microsoftonline.com")
+    void podsReachEntraAsMicrosoft() throws Exception {
+        String log = runPod("entra-probe", "for i in $(seq 1 60); do curl -sf --cacert /ca/ca.crt "
+                + "https://login.microsoftonline.com/" + TENANT + "/v2.0/.well-known/openid-configuration "
+                + "&& echo && curl -sf --cacert /ca/ca.crt " + issuer + ".well-known/openid-configuration && exit 0; "
+                + "sleep 2; done; exit 1", "default", "kube-system");
+        assertTrue(log.contains("\"issuer\":\"https://login.microsoftonline.com/" + TENANT + "/v2.0\""), log);
+        assertTrue(log.contains("\"issuer\":\"" + issuer + "\""), log);
     }
 }

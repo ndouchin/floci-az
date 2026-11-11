@@ -92,8 +92,11 @@ class TlsConfigSourceCertificateGenerationTest {
             "SANs should include '*.managedhsm.azure.net' for Managed-HSM-flavored vault URLs");
         assertTrue(sans.contains("*.azurecr.io"),
             "SANs should include '*.azurecr.io' so registry clients trust {name}.azurecr.io");
-        assertEquals(10, sans.size(),
-            "Default cert should have exactly 10 SANs (localhost, 127.0.0.1, 0.0.0.0, *.localhost, localhost.floci-az.io, *.localhost.floci-az.io, *.vault.azure.net, *.managedhsm.azure.net, *.azurecr.io, host.docker.internal)");
+        assertTrue(sans.contains("login.microsoftonline.com") && sans.contains("*.oic.prod-aks.azure.com")
+                && sans.contains("floci-az.kube-system.svc.cluster.local"),
+            "SANs should include the names emulated AKS pods reach floci-az's Entra by");
+        assertEquals(14, sans.size(),
+            "Default cert should have exactly 14 SANs (localhost, 127.0.0.1, 0.0.0.0, *.localhost, localhost.floci-az.io, *.localhost.floci-az.io, *.vault.azure.net, *.managedhsm.azure.net, *.azurecr.io, host.docker.internal, login.microsoftonline.com, *.oic.prod-aks.azure.com, floci-az.kube-system.svc, floci-az.kube-system.svc.cluster.local)");
     }
 
     @Test

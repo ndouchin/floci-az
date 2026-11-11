@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -27,27 +28,45 @@ final class AksClusterRuntime {
     static final String AUTHZ_CONFIG = WEBHOOK_DIR + "/aks-authz.yaml";
     static final String ADMIN_GROUPS_MANIFEST = "floci-aks-admin-groups.yaml";
 
+    /**
+     * What the runtime needs from floci-az itself.
+     *
+     * @param flociUrl               floci-az's plain HTTP base URL as the cluster's containers reach it
+     * @param webhookCacheTtlSeconds how long the API server caches a webhook's answer
+     * @param flociAddress           floci-az's IP address as a cluster's pods reach it, or null when unknown
+     * @param flociPort              floci-az's port (HTTP, and HTTPS when its TLS is on)
+     * @param caPem                  floci-az's CA in PEM, or null when its TLS is off
+     * @param microsoftHostnames     whether pods reach Entra as {@code login.microsoftonline.com}
+     * @param webhookImage           the azure-workload-identity webhook image
+     */
+    record Options(Supplier<String> flociUrl, int webhookCacheTtlSeconds,
+                   Function<ManagedCluster, String> flociAddress, int flociPort, Supplier<String> caPem,
+                   boolean microsoftHostnames, String webhookImage) {
+
+        static Options defaults() {
+            return new Options(() -> "http://host.docker.internal:4577", 5, cluster -> null, 4577, () -> null, true,
+                    "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3");
+        }
+    }
+
     private final AksClusterManager manager;
     private final AksVersions versions;
     private final int maxNodesPerCluster;
+    private final Options options;
     private final Supplier<String> flociUrl;
     private final int webhookCacheTtlSeconds;
 
     AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster) {
-        this(manager, versions, maxNodesPerCluster, () -> "http://host.docker.internal:4577", 5);
+        this(manager, versions, maxNodesPerCluster, Options.defaults());
     }
 
-    /**
-     * @param flociUrl               floci-az's base URL as the cluster's containers reach it
-     * @param webhookCacheTtlSeconds how long the API server caches a webhook's answer
-     */
-    AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster,
-                      Supplier<String> flociUrl, int webhookCacheTtlSeconds) {
+    AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster, Options options) {
         this.manager = manager;
         this.versions = versions;
         this.maxNodesPerCluster = maxNodesPerCluster;
-        this.flociUrl = flociUrl;
-        this.webhookCacheTtlSeconds = webhookCacheTtlSeconds;
+        this.options = options;
+        this.flociUrl = options.flociUrl();
+        this.webhookCacheTtlSeconds = options.webhookCacheTtlSeconds();
     }
 
     /**
@@ -179,6 +198,10 @@ final class AksClusterRuntime {
         manifests.put(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
         if (cluster.entraEnabled()) {
             manifests.put(ADMIN_GROUPS_MANIFEST, adminGroupsBinding(cluster));
+        }
+        if (cluster.workloadIdentityEnabled()) {
+            manifests.putAll(AksWorkloadIdentityNetwork.manifests(cluster, options.flociAddress().apply(cluster),
+                    options.flociPort(), options.caPem().get(), options.microsoftHostnames()));
         }
         return manifests;
     }

@@ -91,13 +91,14 @@ public class ScopeResolver {
     /**
      * Whether {@code path} is one of the Entra (OpenID Connect) endpoints served at the ARM base URL:
      * {@code {tenant}/oauth2/v2.0/authorize}, {@code {tenant}/oauth2/v2.0/token}, {@code {tenant}/oauth2/token},
-     * {@code {tenant}/discovery/v2.0/keys}, {@code {tenant}[/v2.0]/.well-known/openid-configuration} and
-     * {@code common/userrealm/{username}}.
+     * {@code {tenant}/discovery/v2.0/keys}, {@code {tenant}[/v2.0]/.well-known/openid-configuration},
+     * {@code {tenant}/discovery/instance} and {@code common/userrealm/{username}}.
      */
     public static boolean isEntraPath(String path) {
         return "oidc/userinfo".equals(path) || path.contains("oauth2/v2.0/token") || path.endsWith("oauth2/token")
             || path.contains("oauth2/v2.0/authorize")
             || path.endsWith("discovery/v2.0/keys")
+            || path.endsWith("discovery/instance")
             || path.endsWith(".well-known/openid-configuration")
             || isUserRealmPath(path);
     }

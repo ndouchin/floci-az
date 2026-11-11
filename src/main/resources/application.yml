@@ -306,6 +306,9 @@ floci-az:
       entra:
         kubeconfig-floci-authority: false  # FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY: add --authority-host <floci-az>/ to the Entra user kubeconfig
         webhook-cache-ttl-seconds: 5       # how long API servers cache floci-az's token and authorization webhook answers
+      workload-identity:
+        entra-mode: microsoft-hostnames    # FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_ENTRA_MODE: microsoft-hostnames | authority (both need floci-az TLS)
+        webhook-image: "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3"
     aro:
       enabled: true
       mocked: false         # true = no Docker; clusters are pure ARM state with a synthetic kubeconfig. false = one MicroShift container per cluster

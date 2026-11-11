@@ -755,6 +755,30 @@ public interface EmulatorConfig {
 
         /** Microsoft Entra integration and Azure RBAC of the clusters. */
         AksEntraConfig entra();
+
+        /** Workload Identity: how pods reach floci-az's Entra, and the mutating webhook. */
+        AksWorkloadIdentityConfig workloadIdentity();
+    }
+
+    /** How pods of a Workload Identity cluster reach floci-az's Entra. */
+    enum AksEntraMode {
+        /**
+         * Pods keep AKS's {@code AZURE_AUTHORITY_HOST=https://login.microsoftonline.com/}: the cluster's DNS sends that
+         * name to floci-az, whose certificate covers it, and floci-az answers instance discovery.
+         */
+        MICROSOFT_HOSTNAMES,
+        /** Pods get {@code AZURE_AUTHORITY_HOST} set to floci-az's in-cluster name; code must disable instance discovery. */
+        AUTHORITY
+    }
+
+    interface AksWorkloadIdentityConfig {
+        /** How pods reach floci-az's Entra. Both modes need floci-az's TLS on, since the Azure SDKs refuse plain HTTP. */
+        @WithDefault("microsoft-hostnames")
+        AksEntraMode entraMode();
+
+        /** The azure-workload-identity mutating webhook image AKS's add-on runs. */
+        @WithDefault("mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3")
+        String webhookImage();
     }
 
     interface AksEntraConfig {

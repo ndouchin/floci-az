@@ -19,6 +19,8 @@ import io.floci.az.core.arm.ArmScope;
 import io.floci.az.core.arm.ResourceIndexContributor;
 import io.floci.az.core.cloud.CloudDefaults;
 import io.floci.az.core.docker.DockerHostResolver;
+import io.floci.az.core.docker.HostLiterals;
+import io.floci.az.core.tls.TlsConfigSource;
 import io.floci.az.core.storage.StorageFactory;
 import io.floci.az.services.aks.AksModels.AgentPoolProfile;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
@@ -131,18 +133,37 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 config.services().aks().defaultImage());
         this.store = ArmResourceStore.create(storageFactory, "aks", ManagedCluster.class, ManagedCluster::armId,
                 key -> true);
+        Supplier<String> flociHost = flociHost(hostResolver);
         this.reconciler = new AksReconciler(store, clusterManager, versions,
                 new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster(),
-                        flociUrl(config, hostResolver), config.services().aks().entra().webhookCacheTtlSeconds()),
+                        new AksClusterRuntime.Options(
+                                () -> "http://" + HostLiterals.forUrl(flociHost.get()) + ":" + config.port(),
+                                config.services().aks().entra().webhookCacheTtlSeconds(),
+                                cluster -> flociAddress(clusterManager, cluster, flociHost.get()),
+                                config.port(),
+                                () -> config.tls().enabled() ? TlsConfigSource.currentCertPem : null,
+                                config.services().aks().workloadIdentity().entraMode()
+                                        != EmulatorConfig.AksEntraMode.AUTHORITY,
+                                config.services().aks().workloadIdentity().webhookImage())),
                 Duration.ofSeconds(Math.max(1, config.services().aks().readyTimeoutSeconds())));
     }
 
-    /** floci-az's plain HTTP base URL as cluster containers reach it, resolved once. */
-    private static Supplier<String> flociUrl(EmulatorConfig config, DockerHostResolver hostResolver) {
+    /** The host cluster containers reach floci-az by, resolved once. */
+    private static Supplier<String> flociHost(DockerHostResolver hostResolver) {
         AtomicReference<String> resolved = new AtomicReference<>();
         return () -> resolved.updateAndGet(current -> current != null ? current
-                : "http://" + (hostResolver == null ? "host.docker.internal" : hostResolver.resolve()) + ":"
-                        + config.port());
+                : hostResolver == null ? "host.docker.internal" : HostLiterals.bare(hostResolver.resolve()));
+    }
+
+    /**
+     * floci-az's IP address as the cluster's pods reach it: the host containers use when it is an address, else what
+     * that name resolves to inside the cluster's server container ({@code host.docker.internal}).
+     */
+    private static String flociAddress(AksClusterManager manager, ManagedCluster cluster, String host) {
+        if (host.matches("[0-9.]+") || host.indexOf(':') >= 0) {
+            return host;
+        }
+        return manager.resolveInServer(cluster, host).orElse(null);
     }
 
     @PostConstruct

@@ -254,6 +254,10 @@ public class AksClusterManager {
         return containerDetector.isRunningInContainer() ? networkResolver.resolveNetworkName() : Optional.empty();
     }
 
+    /**
+     * Connects a server or agent container to the network floci-az is on, so the API server reaches its webhooks and
+     * pods reach its Entra when floci-az runs in a container.
+     */
     private void joinEmulatorNetwork(ManagedCluster cluster, String containerId) {
         Optional<String> network = emulatorNetwork().filter(n -> !n.equals(networkName(cluster)));
         if (network.isEmpty() || lifecycleManager.addressOnNetwork(containerId, network.get()).isPresent()) {
@@ -262,8 +266,8 @@ public class AksClusterManager {
         try {
             lifecycleManager.connectToNetwork(containerId, network.get());
         } catch (RuntimeException e) {
-            LOG.warnv("Could not connect the k3s server of AKS cluster {0} to network {1}: {2}", cluster.getName(),
-                    network.get(), e.getMessage());
+            LOG.warnv("Could not connect container {0} of AKS cluster {1} to network {2}: {3}", containerId,
+                    cluster.getName(), network.get(), e.getMessage());
         }
     }
 
@@ -348,6 +352,28 @@ public class AksClusterManager {
         LOG.infov("Read the kubeconfig of AKS cluster {0}", cluster.getName());
     }
 
+    /**
+     * The IPv4 address {@code host} resolves to inside the cluster's server container: its {@code /etc/hosts} first
+     * (the {@code host-gateway} entry on Linux), then DNS (Docker Desktop's {@code host.docker.internal}).
+     */
+    public Optional<String> resolveInServer(ManagedCluster cluster, String host) {
+        if (cluster.getContainerId() == null || !host.matches("[A-Za-z0-9.-]+")) {
+            return Optional.empty();
+        }
+        try {
+            ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                    "sh", "-c", "awk '$2==\"" + host + "\"{print $1}' /etc/hosts; nslookup " + host
+                            + " 2>/dev/null | awk '/^Address/{print $NF}'");
+            return result.output().lines().map(String::trim)
+                    .filter(line -> line.matches("\\d+\\.\\d+\\.\\d+\\.\\d+") && !line.startsWith("127."))
+                    .findFirst();
+        } catch (RuntimeException e) {
+            LOG.debugv("AKS cluster {0}: could not resolve {1} in its server: {2}", cluster.getName(), host,
+                    e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     /** The JWKS the API server publishes for its service account issuer ({@code /openid/v1/jwks}). */
     public String serviceAccountJwks(ManagedCluster cluster) {
         return kubectl(cluster, "get", "--raw", "/openid/v1/jwks").trim();
@@ -386,7 +412,9 @@ public class AksClusterManager {
         String name = agentContainerName(cluster, spec.nodeName());
         Optional<Container> existing = lifecycleManager.findByName(name);
         if (existing.isPresent() && spec.image().equals(existing.get().getImage())) {
-            return lifecycleManager.adopt(existing.get().getId(), List.of()).containerId();
+            String adopted = lifecycleManager.adopt(existing.get().getId(), List.of()).containerId();
+            joinEmulatorNetwork(cluster, adopted);
+            return adopted;
         }
         existing.ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
         lifecycleManager.ensureImageAvailable(spec.image());
@@ -417,6 +445,7 @@ public class AksClusterManager {
             lifecycleManager.removeIfExists(name);
             throw e;
         }
+        joinEmulatorNetwork(cluster, containerId);
         node.setContainerId(containerId);
         node.setImage(spec.image());
         LOG.infov("Started k3s agent {0} for node {1} of AKS cluster {2}", containerId, spec.nodeName(),

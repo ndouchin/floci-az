@@ -1,0 +1,4156 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fast, free, open-source local Azure emulator">
+      
+      
+      
+        <link rel="canonical" href="https://floci.io/floci-az/services/aks/">
+      
+      
+        <link rel="prev" href="../mariadb/">
+      
+      
+        <link rel="next" href="../aro/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/floci.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Azure Kubernetes Service - Floci-AZ</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  
+  <!-- Umami analytics — tracks docs visits (privacy-friendly, cookieless) -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="b2ab8ccd-4619-4b94-bfa6-e8870961d6eb"></script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#azure-kubernetes-service-aks" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Floci-AZ" class="md-header__button md-logo" aria-label="Floci-AZ" data-md-component="logo">
+      
+  <img src="../../assets/floci-header.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Floci-AZ
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Azure Kubernetes Service
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/floci-io/floci-az" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    floci-io/floci-az
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/docker-compose/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/" class="md-tabs__link">
+          
+  
+  
+  Web Console
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Floci-AZ" class="md-nav__button md-logo" aria-label="Floci-AZ" data-md-component="logo">
+      
+  <img src="../../assets/floci-header.svg" alt="logo">
+
+    </a>
+    Floci-AZ
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/floci-io/floci-az" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    floci-io/floci-az
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/azure-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure CLI & SDK Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../terraform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terraform / OpenTofu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/docker-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Compose
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/docker-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Images
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/ports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ports Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulator Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/advanced/application-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    application.yml Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web Console
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/console-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console Contract v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Resource Manager
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blob/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blob Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queue Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../table/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Table Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../functions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Functions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../app-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    App Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signalr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure SignalR Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../key-vault/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Key Vault
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../entra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Entra ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-hub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Hubs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-bus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Bus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cosmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cosmos DB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure SQL Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgresql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for PostgreSQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for MySQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mariadb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Kubernetes Service
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Kubernetes Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quickstart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickstart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quickstart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-create-a-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1: Create a cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-wait-for-the-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2: Wait for the operation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-get-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3: Get the kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-delete-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4: Delete the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle-and-long-running-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle and long-running operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-pools-as-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent pools as nodes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Agent pools as nodes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gpu-sizes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU sizes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#networking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Networking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#microsoft-entra-id-and-azure-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Microsoft Entra ID and Azure RBAC
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Microsoft Entra ID and Azure RBAC">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aadprofile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aadProfile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#azure-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Azure RBAC
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workload-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workload Identity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workload Identity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#oidc-issuer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OIDC issuer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enabling-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trusting-floci-azs-ca" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trusting floci-az's CA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#networking-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Networking and limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loadbalancer-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoadBalancer Services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fields-stored-and-echoed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fields stored and echoed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#real-vs-mocked-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real vs Mocked Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-compose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Compose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aro/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Red Hat OpenShift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container-apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apim/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Virtual Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Virtual Machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Cache for Redis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aci/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Instances
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Monitor / Log Analytics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../email/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Communication Services Email
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../managed-identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Managed Identity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authorization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure RBAC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resourcegraph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Resource Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../managementgroups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Management Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARM Template Deployments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quickstart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickstart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quickstart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-create-a-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1: Create a cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-wait-for-the-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2: Wait for the operation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-get-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3: Get the kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-delete-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4: Delete the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle-and-long-running-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle and long-running operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-pools-as-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent pools as nodes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Agent pools as nodes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gpu-sizes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU sizes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#networking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Networking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#microsoft-entra-id-and-azure-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Microsoft Entra ID and Azure RBAC
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Microsoft Entra ID and Azure RBAC">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aadprofile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aadProfile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#azure-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Azure RBAC
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workload-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workload Identity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workload Identity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#oidc-issuer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OIDC issuer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enabling-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trusting-floci-azs-ca" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trusting floci-az's CA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#networking-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Networking and limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loadbalancer-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoadBalancer Services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fields-stored-and-echoed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fields stored and echoed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#real-vs-mocked-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real vs Mocked Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-compose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Compose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="azure-kubernetes-service-aks">Azure Kubernetes Service (AKS)</h1>
+<p>Compatible with the <code>azure-mgmt-containerservice</code> SDK, the <code>az aks</code> CLI, Terraform's <code>azurerm_kubernetes_cluster</code>, and any ARM-speaking client.</p>
+<blockquote>
+<p><strong>Requires Docker</strong> (in real mode): each AKS cluster is a k3s server container playing the managed control plane,
+plus one k3s agent container per agent pool node, on a Docker network of its own.
+Set <code>FLOCI_AZ_SERVICES_AKS_MOCKED=true</code> for a lightweight mock that skips Docker entirely.</p>
+</blockquote>
+<p>Every AKS name, label, default and error code below was checked against Microsoft's documentation, the AKS REST
+specification or the Azure clients' source; the <a href="#sources">Sources</a> section lists them. Where a behavior could not
+be verified, the page says so.</p>
+<hr />
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Clusters</strong>: CreateOrUpdate, Get, Delete, List (by subscription and by resource group), UpdateTags, <code>start</code>, <code>stop</code></li>
+<li><strong>Long-running operations</strong>: PUT answers <code>201</code>/<code>200</code> with <code>Azure-AsyncOperation</code>; DELETE, <code>start</code> and <code>stop</code>
+  answer <code>202</code>. The operation reports <code>InProgress</code> until the containers reach what was asked, then <code>Succeeded</code>, or
+  <code>Failed</code> with the cause</li>
+<li><strong>Kubernetes versions</strong>: <code>kubernetesVersion</code> picks a pinned k3s image per minor version; <code>kubernetesVersions</code>,
+  <code>upgradeProfiles/default</code>, <code>availableAgentPoolVersions</code> and the agent pool upgrade profile list what the emulator
+  runs; upgrades recreate the server on the new image with the same data</li>
+<li><strong>Agent pools are nodes</strong>: each node is a k3s agent registered under its AKS name, with AKS labels, taints, zones,
+  VMSS provider ID, and CPU and memory limits from its VM size; count changes add or remove nodes</li>
+<li><strong>GPU sizes</strong>: NC, ND and NV nodes carry <code>kubernetes.azure.com/accelerator=nvidia</code> and advertise <code>nvidia.com/gpu</code></li>
+<li><strong>Storage classes</strong> as AKS creates them, with claims that bind</li>
+<li><strong>Networking</strong>: <code>networkProfile</code> pod and service ranges and DNS address applied to k3s, with AKS's defaults</li>
+<li><strong>Credentials</strong>: <code>listClusterUserCredential</code> (<code>clusterUser</code>) and <code>listClusterAdminCredential</code> (<code>clusterAdmin</code>)
+  kubeconfigs laid out as AKS writes them; <code>disableLocalAccounts</code> refuses the static ones</li>
+<li><strong>Microsoft Entra ID</strong>: <code>aadProfile</code>, the kubelogin user kubeconfig, Entra tokens authenticated by a token webhook,
+  admin groups bound to <code>cluster-admin</code></li>
+<li><strong>Azure RBAC</strong>: <code>enableAzureRBAC</code> authorizes requests against <a href="../authorization/">role assignments</a> through an
+  authorization webhook, with AKS's data actions and Forbidden message</li>
+<li><strong>Workload Identity</strong>: the OIDC issuer (on by default), service account tokens under its AKS-format URL, the
+  upstream mutating webhook add-on, and the token exchange at floci-az's Entra from pods (floci-az TLS required)</li>
+<li><strong>LoadBalancer Services</strong>: an Azure-shaped address in <code>status.loadBalancer</code>, public from <code>198.51.100.0/24</code> or
+  internal on the cluster network, held by an appliance container that forwards to the nodes</li>
+<li><strong>Restore</strong>: in a persistent storage mode, clusters come back at startup on their surviving containers or volumes</li>
+<li><strong>Mocked mode</strong>: clusters reach <code>Succeeded</code> at once with a synthetic kubeconfig; no Docker required</li>
+</ul>
+<hr />
+<h2 id="endpoints">Endpoints</h2>
+<p>All operations use ARM paths:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>PUT    /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{name}
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>GET    /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{name}
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>DELETE /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{name}
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>PATCH  /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{name}
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>GET    /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>GET    /subscriptions/{sub}/providers/Microsoft.ContainerService/managedClusters
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>GET    /subscriptions/{sub}/providers/Microsoft.ContainerService/locations/{location}/kubernetesVersions
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>POST   .../managedClusters/{name}/start
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>POST   .../managedClusters/{name}/stop
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>POST   .../managedClusters/{name}/listClusterAdminCredential
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>POST   .../managedClusters/{name}/listClusterUserCredential
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>GET    .../managedClusters/{name}/upgradeProfiles/default
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>GET    .../managedClusters/{name}/availableAgentPoolVersions
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>GET    .../managedClusters/{name}/agentPools
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>GET    .../managedClusters/{name}/agentPools/{poolName}
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>PUT    .../managedClusters/{name}/agentPools/{poolName}
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>DELETE .../managedClusters/{name}/agentPools/{poolName}
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>GET    .../managedClusters/{name}/agentPools/{poolName}/upgradeProfiles/default
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>GET    /subscriptions/{sub}/providers/Microsoft.ContainerService/locations/{location}/operations/{id}
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>GET    /subscriptions/{sub}/providers/Microsoft.ContainerService/locations/{location}/operationresults/{id}
+</code></pre></div>
+<hr />
+<h2 id="quickstart">Quickstart</h2>
+<h3 id="1-create-a-cluster">1: Create a cluster</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="s2">"http://localhost:4577/subscriptions/my-sub/resourceGroups/my-rg/providers/Microsoft.ContainerService/managedClusters/my-cluster?api-version=2025-10-01"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="s1">    "location": "eastus",</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="s1">    "properties": {</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="s1">      "kubernetesVersion": "1.36",</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="s1">      "dnsPrefix": "my-cluster-dns",</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="s1">      "agentPoolProfiles": [</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="s1">        {"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2", "mode": "System"},</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="s1">        {"name": "userpool", "count": 2, "vmSize": "Standard_D4s_v5", "mode": "User",</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="s1">         "nodeLabels": {"team": "payments"}, "nodeTaints": ["dedicated=batch:NoSchedule"],</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="s1">         "availabilityZones": ["1", "2"]}</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="s1">      ]</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="s1">    }</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="s1">  }'</span>
+</code></pre></div>
+<p>The response is <code>201</code> with <code>provisioningState: Creating</code> and an <code>Azure-AsyncOperation</code> header. In real mode the
+cluster reaches <code>Succeeded</code> once the API server answers <code>/readyz</code> and every node is <code>Ready</code> (about 30 to 90 s,
+longer when images are pulled). In mocked mode it is <code>Succeeded</code> at once.</p>
+<h3 id="2-wait-for-the-operation">2: Wait for the operation</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">OP</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-D<span class="w"> </span>-<span class="w"> </span>-o<span class="w"> </span>/dev/null<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span>...<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span>-F<span class="s1">': '</span><span class="w"> </span><span class="s1">'tolower($1)=="azure-asyncoperation" {print $2}'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span>-d<span class="w"> </span><span class="s1">'\r'</span><span class="k">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">until</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$OP</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sys,json; print(json.load(sys.stdin)['status'])"</span><span class="k">)</span><span class="s2">"</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="s2">"InProgress"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>sleep<span class="w"> </span><span class="m">5</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">done</span>
+</code></pre></div>
+<p>Clients that poll long-running operations (the SDKs, <code>az</code>, Terraform) do this for you.</p>
+<h3 id="3-get-the-kubeconfig">3: Get the kubeconfig</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="s2">"http://localhost:4577/subscriptions/my-sub/resourceGroups/my-rg/providers/Microsoft.ContainerService/managedClusters/my-cluster/listClusterUserCredential?api-version=2025-10-01"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['kubeconfigs'][0]['value']).decode())"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>&gt;<span class="w"> </span>~/.kube/my-cluster.yaml
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>kubectl<span class="w"> </span>--kubeconfig<span class="w"> </span>~/.kube/my-cluster.yaml<span class="w"> </span>get<span class="w"> </span>nodes<span class="w"> </span>-L<span class="w"> </span>agentpool,topology.kubernetes.io/zone
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>NAME                                STATUS   ROLES    AGE   VERSION        AGENTPOOL   ZONE
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>aks-nodepool1-12345678-vmss000000   Ready    &lt;none&gt;   40s   v1.36.6+k3s1   nodepool1   0
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>aks-userpool-12345678-vmss000000    Ready    &lt;none&gt;   40s   v1.36.6+k3s1   userpool    eastus-1
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>aks-userpool-12345678-vmss000001    Ready    &lt;none&gt;   40s   v1.36.6+k3s1   userpool    eastus-2
+</code></pre></div>
+<p>In real mode the credential operations answer <code>409 OperationNotAllowed</code> until the cluster has a kubeconfig (while it
+is first <code>Creating</code>, or after it <code>Failed</code>), rather than a kubeconfig that cannot reach a server.</p>
+<h3 id="4-delete-the-cluster">4: Delete the cluster</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="s2">"http://localhost:4577/subscriptions/my-sub/resourceGroups/my-rg/providers/Microsoft.ContainerService/managedClusters/my-cluster?api-version=2025-10-01"</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># 202 with Azure-AsyncOperation and Location; the cluster shows Deleting until its containers,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># volumes and network are gone, then GET answers 404</span>
+</code></pre></div>
+<hr />
+<h2 id="lifecycle-and-long-running-operations">Lifecycle and long-running operations</h2>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Answer</th>
+<th>Operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PUT cluster (new)</td>
+<td><code>201</code>, <code>Creating</code>, <code>Azure-AsyncOperation</code>, <code>Retry-After</code></td>
+<td><code>InProgress</code> until the API server and the nodes are ready</td>
+</tr>
+<tr>
+<td>PUT cluster (existing)</td>
+<td><code>200</code>, <code>Updating</code> (or <code>Upgrading</code> for a version change)</td>
+<td>the change is applied: pool counts, labels, taints, zones, versions</td>
+</tr>
+<tr>
+<td>PUT agent pool</td>
+<td><code>201</code>/<code>200</code>, <code>Creating</code>, <code>Updating</code>, <code>Scaling</code> or <code>Upgrading</code>, <code>Azure-AsyncOperation</code></td>
+<td>the pool's nodes are created, removed or recreated</td>
+</tr>
+<tr>
+<td>DELETE cluster or agent pool</td>
+<td><code>202</code>, <code>Azure-AsyncOperation</code>, <code>Location</code>; <code>204</code> when absent</td>
+<td>containers removed, then the resource</td>
+</tr>
+<tr>
+<td>POST <code>stop</code> / <code>start</code></td>
+<td><code>202</code>, <code>Location</code></td>
+<td>containers stopped or started; <code>powerState.code</code> is <code>Stopped</code> or <code>Running</code></td>
+</tr>
+</tbody>
+</table>
+<p>The operation status (<code>GET .../operations/{id}</code>) follows the provisioning state of the cluster: <code>InProgress</code> while it
+is transient, <code>Succeeded</code> when it settles, <code>Failed</code> with the error message otherwise (for example when the kubeconfig
+cannot be read from k3s, or the nodes do not become <code>Ready</code> within <code>ready-timeout-seconds</code>). The <code>Location</code> monitor
+(<code>.../operationresults/{id}</code>) answers <code>202</code> while running and <code>204</code> once done, as the
+<a href="https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples/ManagedClustersStart.json">ManagedClusters_Start example</a> shows. A PUT that arrives while another is applied is applied after it,
+and a PUT on a cluster that is <code>Deleting</code> fails with <code>409 OperationNotAllowed</code>.</p>
+<p><strong>Restore.</strong> With a persistent storage mode (<code>persistent</code>, <code>hybrid</code>, <code>wal</code>), every recorded cluster is reconciled at
+startup: surviving server and agent containers are adopted; a lost server is recreated on its data volume (same CA,
+same kubeconfigs); a lost volume gives a fresh cluster and a warning that its CA changed. In <code>memory</code> mode nothing is
+restored. Shutdown still removes the containers unless <code>keep-running-on-shutdown</code> is set.</p>
+<hr />
+<h2 id="kubernetes-versions">Kubernetes versions</h2>
+<p>AKS supports the four newest minors; on 2026-11-10 they are 1.34 (end of life November 2026), 1.35, 1.36 and 1.37,
+and the portal, CLI and PowerShell create clusters on N-1 (<a href="https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions">AKS release calendar</a>). The emulator runs
+one pinned k3s image per minor:</p>
+<table>
+<thead>
+<tr>
+<th><code>kubernetesVersion</code></th>
+<th>Runs</th>
+<th>k3s image</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1.34</code> or <code>1.34.13</code></td>
+<td>1.34.13</td>
+<td><code>rancher/k3s:v1.34.13-k3s1</code></td>
+</tr>
+<tr>
+<td><code>1.35</code> or <code>1.35.10</code></td>
+<td>1.35.10</td>
+<td><code>rancher/k3s:v1.35.10-k3s1</code></td>
+</tr>
+<tr>
+<td><code>1.36</code> or <code>1.36.6</code> (default)</td>
+<td>1.36.6</td>
+<td><code>rancher/k3s:v1.36.6-k3s1</code></td>
+</tr>
+<tr>
+<td><code>1.37</code> or <code>1.37.2</code></td>
+<td>1.37.2</td>
+<td><code>rancher/k3s:v1.37.2-k3s1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Patch numbers follow k3s, not AKS's own patch releases. <code>kubernetesVersion</code> echoes what was asked (<code>major.minor</code> or
+the exact patch) and <code>currentKubernetesVersion</code> the patch that runs, as the <a href="https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/managedClusters.json">REST spec</a> describes ("When
+<code>&lt;major.minor&gt;</code> is specified, the latest supported GA patch version is chosen automatically"). The rules AKS applies:</p>
+<ul>
+<li>Upgrades go one minor at a time and never down; asking for the same minor again is no upgrade.</li>
+<li>An upgrade (a new <code>kubernetesVersion</code> on PUT) recreates the k3s server on the new image with the same data volume
+  and host port, so existing kubeconfigs keep working, then recreates the nodes of every pool under their own names.</li>
+<li>An agent pool <code>orchestratorVersion</code> change (agent pool PUT) recreates that pool's nodes only. A pool may lag the
+  control plane by up to three minors and never lead it (<a href="https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions">version skew</a>).</li>
+<li>Through the managed cluster API, pools name no <code>orchestratorVersion</code> or each name one that is unchanged or equal to
+  the control plane's; per-pool changes go through the agent pool API.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>HTTP</th>
+<th>Code</th>
+<th>Message (as AKS words it)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unsupported cluster version</td>
+<td>400</td>
+<td><code>K8sVersionNotSupported</code></td>
+<td><code>Managed cluster &lt;name&gt; is on version &lt;v&gt; which is not supported in this region. Please use [az aks get-versions] command to get the supported version list in this region. For more information, please check https://aka.ms/supported-version-list</code> (<a href="https://github.com/rancher/aks-operator/issues/678">example</a>)</td>
+</tr>
+<tr>
+<td>Unsupported pool version</td>
+<td>400</td>
+<td><code>AgentPoolK8sVersionNotSupported</code></td>
+<td><code>Version &lt;v&gt; is not supported in this region. Please use [az aks get-versions] ...</code> (<a href="https://github.com/pulumi/templates/issues/781">example</a>)</td>
+</tr>
+<tr>
+<td>Skipped or lower minor</td>
+<td>400</td>
+<td><code>OperationNotAllowed</code></td>
+<td><code>Upgrading Kubernetes version &lt;from&gt; to &lt;to&gt; is not allowed. Available upgrades: [&lt;versions&gt;]. Please see https://aka.ms/aks-supported-k8s-ver for version details.</code> (<a href="https://github.com/rancher/dashboard/issues/11884">example</a>)</td>
+</tr>
+<tr>
+<td>Pool ahead of, or more than three minors behind, the control plane</td>
+<td>400</td>
+<td><code>NodePoolMcVersionIncompatible</code></td>
+<td><code>Node pool version &lt;p&gt; and control plane version &lt;c&gt; are incompatible. Minor version of node pool version &lt;n&gt; is bigger than control plane version &lt;m&gt;. ...</code> (<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/error-codes/aks-error-code-page">error codes</a>, <a href="https://github.com/Azure/terraform-azurerm-aks/issues/465">example</a>)</td>
+</tr>
+<tr>
+<td>Mixed or changed pool versions through the managed cluster API</td>
+<td>400</td>
+<td><code>NotAllAgentPoolOrchestratorVersionSpecifiedAndUnchanged</code></td>
+<td><code>Using managed cluster api, all Agent pools' OrchestratorVersion must be all specified or all unspecified. ...</code> (<a href="https://github.com/hashicorp/terraform-provider-azurerm/issues/20791">example</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>The wording of the "more than three minors behind" message is not verified.</p>
+<p><code>kubernetesVersions</code>, <code>upgradeProfiles/default</code> and <code>availableAgentPoolVersions</code> have the shapes of the
+<a href="https://github.com/Azure/azure-rest-api-specs/tree/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples">KubernetesVersions_List</a>, ManagedClustersGetUpgradeProfile and AgentPoolsGetAgentPoolAvailableVersions
+examples and list only the versions above.</p>
+<hr />
+<h2 id="agent-pools-as-nodes">Agent pools as nodes</h2>
+<p>The k3s server runs with <code>--disable-agent --egress-selector-mode=cluster</code>: it has no kubelet, so <code>kubectl get nodes</code>
+lists only agent pool nodes, as on AKS, and the API server reaches kubelets, pods and services through the agents'
+tunnels (pod logs and the metrics API work through them). Each node is a k3s agent container on the cluster's
+Docker network <code>floci-aks-&lt;instanceId&gt;</code>; the server also joins the emulator's own network when one is configured.</p>
+<table>
+<thead>
+<tr>
+<th>Node field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td><code>aks-&lt;pool&gt;-&lt;8 digits&gt;-vmss&lt;instance&gt;</code>: the scale set's computer name prefix followed by the instance ID in base 36 over six characters (<a href="https://learn.microsoft.com/en-us/azure/aks/use-labels">labels</a>, <a href="https://learn.microsoft.com/en-us/azure/virtual-machine-scale-sets/virtual-machine-scale-sets-instance-ids">VMSS instance names</a>)</td>
+</tr>
+<tr>
+<td><code>spec.providerID</code></td>
+<td><code>azure:///subscriptions/&lt;sub&gt;/resourceGroups/&lt;node resource group, lowercased&gt;/providers/Microsoft.Compute/virtualMachineScaleSets/aks-&lt;pool&gt;-&lt;digits&gt;-vmss/virtualMachines/&lt;index&gt;</code> (the Azure cloud provider lowercases the resource group, <a href="https://github.com/kubernetes-sigs/cloud-provider-azure/blob/baabfb774d73cdeb9d2ad40b0a3f495103d7b712/pkg/provider/azure_vmss.go">cloud-provider-azure</a>)</td>
+</tr>
+<tr>
+<td>Taints</td>
+<td>the pool's <code>nodeTaints</code> (<code>key=value:Effect</code>, validated)</td>
+</tr>
+<tr>
+<td>CPU and memory</td>
+<td>the container's limits come from the VM size (for example <code>Standard_D4s_v5</code>: 4 vCPU, 16 GiB), capped at the Docker host's CPUs</td>
+</tr>
+<tr>
+<td><code>max-pods</code></td>
+<td>the pool's <code>maxPods</code>, defaulting from the network plugin (see <a href="#networking">Networking</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>Labels, from AKS's <a href="https://learn.microsoft.com/en-us/azure/aks/use-labels">reserved system labels</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubernetes.azure.com/agentpool</code>, <code>agentpool</code> (deprecated, still set)</td>
+<td>pool name</td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/mode</code></td>
+<td><code>system</code> or <code>user</code></td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/role</code></td>
+<td><code>agent</code></td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/cluster</code></td>
+<td>node resource group (<code>MC_&lt;rg&gt;_&lt;cluster&gt;_&lt;region&gt;</code> by default)</td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/managedby</code></td>
+<td><code>aks</code></td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/os-sku</code></td>
+<td>the pool's <code>osSKU</code> (<code>Ubuntu</code> by default)</td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/nodepool-type</code></td>
+<td><code>VirtualMachineScaleSets</code></td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/sku-cpu</code>, <code>kubernetes.azure.com/sku-memory</code></td>
+<td>vCPUs and GiB of the VM size</td>
+</tr>
+<tr>
+<td><code>node.kubernetes.io/instance-type</code>, <code>beta.kubernetes.io/instance-type</code></td>
+<td>VM size</td>
+</tr>
+<tr>
+<td><code>topology.kubernetes.io/region</code></td>
+<td>cluster location</td>
+</tr>
+<tr>
+<td><code>topology.kubernetes.io/zone</code></td>
+<td><code>&lt;region&gt;-&lt;zone&gt;</code> for a zonal pool (nodes spread round-robin over <code>availabilityZones</code>), <code>0</code> otherwise</td>
+</tr>
+<tr>
+<td><code>kubernetes.azure.com/accelerator</code>, <code>accelerator</code> (deprecated, still set)</td>
+<td><code>nvidia</code> on GPU sizes</td>
+</tr>
+<tr>
+<td>pool <code>nodeLabels</code></td>
+<td>as given; keys under <code>kubernetes.azure.com/</code> and <code>kubernetes.io/</code> are refused with <code>400 InvalidParameter</code>, since AKS reserves those prefixes</td>
+</tr>
+</tbody>
+</table>
+<p>Count changes (managed cluster or agent pool PUT) add nodes at the next indexes or remove the highest ones; an agent
+pool DELETE removes its nodes; a pool with <code>count: 0</code> has no node. Label and taint changes are applied to the running
+nodes, and labels or taints a previous request set and this one drops are removed.</p>
+<p>VM sizes the emulator knows by heart: DSv2 (DS1 to DS5), Dsv5 (D2s to D32s), NCasT4_v3, NC A100 v4, ND H100 v5 and
+NVadsA10 v5 (<a href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/overview">Azure VM sizes</a>). Any other size takes its vCPU count from its name (the number after the
+family letters) and 8 GiB per vCPU for the E family, 2 GiB for F, 4 GiB otherwise.</p>
+<p><strong>Node cap.</strong> <code>max-nodes-per-cluster</code> (default 5) bounds the node containers of a cluster. System pools are served
+first, then the others in creation order; pools past the cap get fewer nodes, the API still reports their requested
+<code>count</code>, and a WARN names the cap and the pools short of nodes.</p>
+<h3 id="gpu-sizes">GPU sizes</h3>
+<p>Nodes of NC, ND and NV sizes (except the AMD NVv4 and MI300X sizes) carry <code>kubernetes.azure.com/accelerator=nvidia</code>
+(<a href="https://learn.microsoft.com/en-us/azure/aks/use-labels">labels</a>) and advertise the size's GPU count as <code>nvidia.com/gpu</code> capacity and allocatable, so pods with
+<code>resources.limits: {nvidia.com/gpu: 1}</code> schedule on them (the container still has no GPU). On AKS that capacity
+appears once the NVIDIA device plugin runs, which AKS installs on <a href="https://learn.microsoft.com/en-us/azure/aks/aks-managed-gpu-nodes">AKS-managed GPU node pools</a> and
+which you install yourself otherwise (<a href="https://learn.microsoft.com/en-us/azure/aks/use-nvidia-gpu">Use GPUs on AKS</a>); the emulator advertises it directly. AKS adds no
+taint to GPU nodes; its examples add <code>sku=gpu:NoSchedule</code> through <code>nodeTaints</code>, which the emulator applies like any
+other taint.</p>
+<hr />
+<h2 id="storage-classes">Storage classes</h2>
+<p>k3s's own <code>local-path</code> class is disabled. A k3s auto-deploy manifest creates the classes AKS precreates, and a
+<code>local-path-provisioner</code> instance registered under each Azure CSI driver name (<code>disk.csi.azure.com</code>,
+<code>file.csi.azure.com</code>) serves them from a Docker volume every node mounts, so claims bind, data survives a node being
+recreated, and file shares are <code>ReadWriteMany</code> across nodes.</p>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Provisioner</th>
+<th>Parameters</th>
+<th>Binding mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default</code> (default class)</td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>skuname: StandardSSD_LRS</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>managed-csi</code></td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>skuname: StandardSSD_LRS</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>managed-csi-premium</code></td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>skuname: Premium_LRS</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>managed-csi-premium-v2</code> (Kubernetes 1.35 and later)</td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>skuname: PremiumV2_LRS</code>, <code>cachingMode: None</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>managed</code></td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>cachingmode: ReadOnly</code>, <code>kind: Managed</code>, <code>storageaccounttype: StandardSSD_LRS</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>managed-premium</code></td>
+<td><code>disk.csi.azure.com</code></td>
+<td><code>cachingmode: ReadOnly</code>, <code>kind: Managed</code>, <code>storageaccounttype: Premium_LRS</code></td>
+<td><code>WaitForFirstConsumer</code></td>
+</tr>
+<tr>
+<td><code>azurefile-csi</code></td>
+<td><code>file.csi.azure.com</code></td>
+<td><code>skuName: Standard_LRS</code></td>
+<td><code>Immediate</code></td>
+</tr>
+<tr>
+<td><code>azurefile-csi-premium</code></td>
+<td><code>file.csi.azure.com</code></td>
+<td><code>skuName: Premium_LRS</code></td>
+<td><code>Immediate</code></td>
+</tr>
+<tr>
+<td><code>azurefile</code></td>
+<td><code>file.csi.azure.com</code></td>
+<td><code>skuName: Standard_LRS</code></td>
+<td><code>Immediate</code></td>
+</tr>
+<tr>
+<td><code>azurefile-premium</code></td>
+<td><code>file.csi.azure.com</code></td>
+<td><code>skuName: Premium_LRS</code></td>
+<td><code>Immediate</code></td>
+</tr>
+</tbody>
+</table>
+<p>All have <code>reclaimPolicy: Delete</code>, <code>allowVolumeExpansion: true</code> and the labels <code>addonmanager.kubernetes.io/mode:
+EnsureExists</code> and <code>kubernetes.io/cluster-service: "true"</code>. Sources: <a href="https://learn.microsoft.com/en-us/azure/aks/concepts-storage">storage concepts</a> (<code>default</code> is
+<code>managed-csi</code>, premium v2 from 1.35, Delete and expandable), <a href="https://learn.microsoft.com/en-us/azure/aks/azure-csi-disk-storage-provision">Azure Disks</a> (<code>WaitForFirstConsumer</code>,
+<code>skuName</code> values, <code>PremiumV2_LRS</code> only with caching <code>None</code>), <a href="https://learn.microsoft.com/en-us/azure/aks/create-volume-azure-files">Azure Files</a> (<code>Immediate</code>), and a
+<a href="https://github.com/Azure/AKS/discussions/2784"><code>kubectl get sc</code> listing from an AKS cluster</a> for the legacy names <code>managed</code>, <code>managed-premium</code>,
+<code>azurefile</code>, <code>azurefile-premium</code>, the <code>managed-premium</code> parameters and the labels. Not verified: the parameters of
+<code>managed</code>, <code>azurefile</code> and <code>azurefile-premium</code>. Not emulated: from Kubernetes 1.29, AKS uses ZRS SKUs in the built-in
+disk classes of zonal clusters; the emulator keeps LRS. The Blob CSI classes (<code>azureblob-*</code>) exist on AKS only when
+the Blob driver is enabled and are not created.</p>
+<hr />
+<h2 id="networking">Networking</h2>
+<p>A new cluster's <code>networkProfile</code> is completed with AKS's defaults and applied to the k3s server:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Applied as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>networkPlugin</code> / <code>networkPluginMode</code></td>
+<td><code>azure</code> / <code>overlay</code> (Azure CNI Overlay)</td>
+<td>reported; pods still use k3s's flannel</td>
+</tr>
+<tr>
+<td><code>podCidr</code> (or <code>podCidrs[0]</code>)</td>
+<td><code>10.244.0.0/16</code> for overlay, kubenet and <code>none</code>; none reported for Azure CNI on the node subnet</td>
+<td><code>--cluster-cidr</code> (10.244.0.0/16 when none is reported)</td>
+</tr>
+<tr>
+<td><code>serviceCidr</code> (or <code>serviceCidrs[0]</code>)</td>
+<td><code>10.0.0.0/16</code></td>
+<td><code>--service-cidr</code>; the <code>kubernetes</code> service is <code>10.0.0.1</code></td>
+</tr>
+<tr>
+<td><code>dnsServiceIP</code></td>
+<td><code>10.0.0.10</code></td>
+<td><code>--cluster-dns</code>; the <code>kube-dns</code> service address</td>
+</tr>
+<tr>
+<td><code>networkPolicy</code> / <code>networkDataplane</code></td>
+<td>none</td>
+<td>k3s's network policy controller runs only with a policy engine (<code>azure</code>, <code>calico</code>, <code>cilium</code>) or the Cilium dataplane, since AKS enforces NetworkPolicies only then</td>
+</tr>
+<tr>
+<td><code>outboundType</code></td>
+<td><code>loadBalancer</code></td>
+<td>reported</td>
+</tr>
+<tr>
+<td><code>loadBalancerSku</code></td>
+<td><code>standard</code></td>
+<td>reported</td>
+</tr>
+</tbody>
+</table>
+<p>GET also reports <code>podCidrs</code>, <code>serviceCidrs</code> and <code>ipFamilies: ["IPv4"]</code>, as the <a href="https://github.com/Azure/azure-rest-api-specs/tree/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples">ManagedClustersGet example</a>
+does. A <code>dnsServiceIP</code> outside <code>serviceCidr</code> fails with <code>400 DnsServiceIpOutOfServiceCidr</code> "The DNS service IP
+10.0.0.10 is out of the range defined by service CIDR 10.200.0.0/16." (<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/error-codes/dnsserviceipoutofservicecidr-error">troubleshooting</a>); a malformed range
+fails with <code>400 InvalidParameter</code>. Pools default <code>maxPods</code> from the plugin: 250 for Azure CNI Overlay and <code>none</code>, 30
+for Azure CNI on the node subnet, 110 for kubenet (<a href="https://learn.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest">az aks create</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/concepts-network-azure-cni-overlay">overlay</a>).</p>
+<p>Sources: <a href="https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/managedClusters.json">REST spec</a> (defaults <code>10.244.0.0/16</code>, <code>10.0.0.0/16</code>, <code>10.0.0.10</code>, <code>loadBalancer</code>), <a href="https://learn.microsoft.com/en-us/azure/aks/azure-cni-overlay">Azure CNI
+Overlay</a> ("If you don't specify <code>--network-plugin</code>, AKS defaults to Azure CNI Overlay", default
+pod CIDR), <a href="https://learn.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest">az aks create</a>.</p>
+<p>Not verified, so kept simple: AKS does not document what a later PUT that changes the ranges answers; the emulator
+keeps the ranges the cluster was created with. Dual-stack (IPv6) ranges are not emulated: the first IPv4 range is
+used. Clusters recorded before this change keep k3s's own ranges (10.42.0.0/16, 10.43.0.0/16), since their data store
+was initialized with them. metrics-server runs, as AKS ships it; traefik does not.</p>
+<p>A pod reaches a Service whose endpoint is on its own node, cluster DNS included, only when the Docker host's kernel
+has <code>br_netfilter</code> loaded: without it, the reply between two pods of a node is bridged past conntrack, so the
+Service's address translation is never reversed and the connection times out. Docker loads the module only for
+features that need it, k3s cannot load it from its container, and k3s's network policy controller, which loads it as a
+side effect, is off unless the cluster names a policy engine. Every k3s container therefore makes the host kernel load
+it (a throwaway iptables <code>physdev</code> rule) before k3s starts. When that fails, the container's log says
+<code>floci-az: br_netfilter is not loaded on the Docker host</code>, and <code>sudo modprobe br_netfilter</code> on the host fixes it.</p>
+<hr />
+<h2 id="credentials">Credentials</h2>
+<p>Both credential operations return one kubeconfig, base64-encoded, laid out as AKS writes it (an
+<a href="https://github.com/Azure/azure-cli/blob/74f7e490691019bd24dd46ca1e5712c57ea66af0/src/azure-cli/azure/cli/command_modules/acs/tests/latest/recordings/test_aks_create_default.yaml"><code>az aks get-credentials</code> recording</a> and the <a href="https://github.com/Azure/azure-cli/blob/74f7e490691019bd24dd46ca1e5712c57ea66af0/src/azure-cli/azure/cli/command_modules/acs/tests/latest/test_custom.py">az CLI merge test</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th><code>kubeconfigs[0].name</code></th>
+<th>Cluster and context</th>
+<th>User</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>listClusterUserCredential</code></td>
+<td><code>clusterUser</code></td>
+<td><code>&lt;cluster&gt;</code></td>
+<td><code>clusterUser_&lt;resourceGroup&gt;_&lt;cluster&gt;</code></td>
+</tr>
+<tr>
+<td><code>listClusterAdminCredential</code></td>
+<td><code>clusterAdmin</code></td>
+<td><code>&lt;cluster&gt;</code></td>
+<td><code>clusterAdmin_&lt;resourceGroup&gt;_&lt;cluster&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>az aks get-credentials --admin</code> renames the admin context to <code>&lt;cluster&gt;-admin</code> itself when it merges the file, as on
+AKS. Both users carry the cluster's k3s client certificate (cluster admin): on AKS without Microsoft Entra
+integration the user credential is a certificate with the same rights. The server is the endpoint clients reach the
+API server on, not <code>&lt;dnsPrefix&gt;.hcp.&lt;region&gt;.azmk8s.io:443</code>.</p>
+<p>With <code>disableLocalAccounts: true</code>, <code>listClusterAdminCredential</code> fails with <code>400 BadRequest</code> "Getting static
+credential is not allowed because this cluster is set to disable local accounts." (<a href="https://learn.microsoft.com/en-us/azure/aks/local-accounts">local accounts</a>,
+<a href="https://github.com/Azure/caf-terraform-landingzones/issues/416">raw error</a>); setting it back to <code>false</code> gives the admin credential back. On a cluster without Microsoft
+Entra integration the user credential fails the same way, since the docs say "any attempt to authenticate with user
+or admin credentials will fail" (the exact body of that case is not verified). On an Entra cluster the user
+credential is the kubelogin kubeconfig described below.</p>
+<hr />
+<h2 id="microsoft-entra-id-and-azure-rbac">Microsoft Entra ID and Azure RBAC</h2>
+<h3 id="aadprofile"><code>aadProfile</code></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>managed</code></td>
+<td>Turns managed Entra integration on; once on it stays on, since AKS can't disable it (<a href="https://learn.microsoft.com/en-us/azure/aks/entra-id-control-plane-authentication">control plane authentication</a>)</td>
+</tr>
+<tr>
+<td><code>enableAzureRBAC</code></td>
+<td>Authorizes Kubernetes requests against Azure role assignments (below)</td>
+</tr>
+<tr>
+<td><code>adminGroupObjectIDs</code></td>
+<td>Bound to <code>cluster-admin</code>; answered <code>null</code> when none were sent, as the spec example <code>ManagedClustersCreate_UpdateWithEnableAzureRBAC.json</code> shows</td>
+</tr>
+<tr>
+<td><code>tenantID</code></td>
+<td>Defaults to the subscription's tenant</td>
+</tr>
+<tr>
+<td><code>clientAppID</code>, <code>serverAppID</code></td>
+<td>Legacy fields, stored and returned</td>
+</tr>
+<tr>
+<td><code>serverAppSecret</code></td>
+<td>Stored, never returned (<code>x-ms-secret</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>A PUT that omits <code>aadProfile</code> keeps it. Not verified: the RP's errors for <code>enableAzureRBAC</code> without <code>managed</code>, a
+<code>tenantID</code> other than the subscription's, or a request that turns integration off (the emulator keeps it on).</p>
+<h3 id="user-kubeconfig">User kubeconfig</h3>
+<p>On an Entra cluster <code>listClusterUserCredential</code> returns an exec user, as AKS writes it from Kubernetes 1.24
+(<a href="https://learn.microsoft.com/en-us/azure/aks/kubelogin-authentication">kubelogin authentication</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">users</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">clusterUser_&lt;resourceGroup&gt;_&lt;cluster&gt;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">user</span><span class="p">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">exec</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">      </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">client.authentication.k8s.io/v1beta1</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">get-token</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">--environment</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">AzurePublicCloud</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">--server-id</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">6dae42f8-4368-4678-94ff-3960e28e3630</span><span class="p p-Indicator">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">             </span><span class="nv">--client-id</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">80faf920-1908-4b52-b5ef-a8e7bedfc67a</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">--tenant-id</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">&lt;tenantID&gt;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">--login</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">devicecode</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">      </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubelogin</span>
+</code></pre></div>
+<p><code>6dae42f8-...</code> is the AKS server application, the audience of every kubelogin mode, and <code>80faf920-...</code> the public
+client. The az CLI looks for <code>--login devicecode</code> and converts the file to <code>-l azurecli</code> when kubelogin is installed.
+<code>format=azure</code> returns the legacy <code>azure</code> auth-provider user (<code>apiserver-id</code>, <code>client-id</code>, <code>tenant-id</code>,
+<code>environment</code>, <code>config-mode: '1'</code>), the keys kubelogin's <code>convert-kubeconfig</code> reads. The admin credential stays the
+certificate kubeconfig. The <code>installHint</code>, <code>env</code> and <code>provideClusterInfo</code> fields are written as commonly observed in
+AKS kubeconfigs; not verified against a Tier 1 source.</p>
+<p>kubelogin reaches floci-az only over HTTPS (azidentity refuses a plain HTTP authority) and with
+<code>--disable-instance-discovery</code> (MSAL otherwise asks <code>login.microsoftonline.com</code> about the host and gets AADSTS50049).
+Either:</p>
+<ul>
+<li>convert to the az CLI mode once the az CLI is signed in to floci-az: <code>kubelogin convert-kubeconfig -l azurecli</code>;</li>
+<li>or set <code>floci-az.services.aks.entra.kubeconfig-floci-authority=true</code> (with floci-az TLS on), which appends
+  <code>--authority-host https://&lt;floci-az&gt;/ --disable-instance-discovery</code> to the kubeconfig. <code>convert-kubeconfig</code> drops
+  those two flags for every mode except <code>workloadidentity</code>, so add them again after a conversion.</li>
+</ul>
+<p>Tested modes: <code>spn</code>, <code>ropc</code> and <code>azurecli</code> (compat suite <code>compat-azcli/test/kubelogin.bats</code>). <code>devicecode</code> and
+<code>interactive</code> need endpoints floci-az does not serve (device code) or a browser.</p>
+<h3 id="authentication">Authentication</h3>
+<p>An Entra cluster's API server runs with <code>authentication-token-webhook-config-file</code> pointing at
+<code>POST /_floci/aks/clusters/{instanceId}/token-review</code>, the role AKS's managed webhook plays
+(<a href="https://github.com/MicrosoftDocs/azure-aks-docs/blob/611a5efc0de581eac904bca48c90156ba75c8431/articles/aks/concepts-identity.md">identity concepts</a>). It does what that webhook (kubeguard/guard, <a href="https://github.com/kubeguard/guard/blob/v0.16.28/auth/providers/azure/azure.go"><code>auth/providers/azure</code></a>)
+does:</p>
+<ul>
+<li>the token must be signed by floci-az's Entra, within its lifetime, issued in the cluster's tenant, for the AKS
+  server application (Entra issues v1.0 tokens with <code>upn</code> and <code>groups</code> for it, see <a href="../entra/#access-token-audience-and-version">Entra</a>);</li>
+<li>username = <code>upn</code>, else <code>oid</code> (service principals and managed identities appear by object id);</li>
+<li>groups = the <code>groups</code> claim (object ids), else the directory's direct memberships; <code>extra.oid</code> = the object id.</li>
+</ul>
+<p>A refused token gets <code>401 Unauthorized</code>. Service account tokens and the admin certificate never reach the webhook.</p>
+<h3 id="admin-groups">Admin groups</h3>
+<p><code>adminGroupObjectIDs</code> become the ClusterRoleBinding <code>aks-cluster-admin-binding-aad</code> to <code>cluster-admin</code>, written to
+the k3s auto-deploy directory and rewritten when the list changes ("AKS automatically generates a ClusterRoleBinding
+that binds all of the listed groups to the cluster-admin Kubernetes role", <a href="https://github.com/MicrosoftDocs/azure-aks-docs/blob/611a5efc0de581eac904bca48c90156ba75c8431/articles/aks/concepts-identity.md">identity concepts</a>). Its
+name on AKS is not documented. With Azure RBAC the admin groups are "irrelevant", so the binding names no subject.</p>
+<h3 id="azure-rbac">Azure RBAC</h3>
+<p>With <code>enableAzureRBAC: true</code> the API server runs <code>authorization-mode=Node,RBAC,Webhook</code> with its authorization
+webhook at <code>POST /_floci/aks/clusters/{instanceId}/subject-access-review</code>. Kubernetes RBAC answers first, so a
+RoleBinding still grants what it grants and the webhook decides the rest, the union AKS describes
+(<a href="https://learn.microsoft.com/en-us/azure/aks/concepts-cluster-authorization">authorization concepts</a>). As guard does (<a href="https://github.com/kubeguard/guard/blob/v0.16.28/authz/providers/azure/rbac/checkaccessreqhelper.go"><code>authz/providers/azure</code></a>):</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Data action checked</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get</code>, <code>list</code>, <code>watch</code> on <code>{group}/{resource}</code></td>
+<td><code>Microsoft.ContainerService/managedClusters/{group}/{resource}/read</code> (no group segment for the core group)</td>
+</tr>
+<tr>
+<td><code>create</code>, <code>update</code>, <code>patch</code></td>
+<td><code>.../write</code></td>
+</tr>
+<tr>
+<td><code>delete</code>, <code>deletecollection</code></td>
+<td><code>.../delete</code></td>
+</tr>
+<tr>
+<td><code>bind</code>, <code>escalate</code>, <code>use</code>, <code>impersonate</code></td>
+<td><code>.../{verb}/action</code></td>
+</tr>
+<tr>
+<td><code>pods/exec</code></td>
+<td><code>.../pods/exec/action</code>; other subresources check their resource</td>
+</tr>
+<tr>
+<td>non-resource path</td>
+<td><code>Microsoft.ContainerService/managedClusters/{path}/{action}</code></td>
+</tr>
+</tbody>
+</table>
+<p>The scope is <code>&lt;clusterId&gt;/namespaces/&lt;namespace&gt;</code> for a namespaced request, else the cluster id, and assignments at
+the cluster, its resource group or its subscription apply below them. The principals are the user's <code>oid</code> and its
+groups that are object ids. Users whose name starts with <code>system:</code> and users without <code>extra.oid</code> (service accounts,
+certificate users, k3s components) get no opinion, so Kubernetes RBAC decides for them. A denial reads, as kubectl
+prints it on AKS (<a href="https://learn.microsoft.com/en-us/azure/aks/privileged-identity-management">PIM example</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Error from server (Forbidden): pods is forbidden: User "&lt;upn&gt;" cannot list resource "pods" in API group "" in the
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>namespace "ns2": User does not have access to the resource in Azure. Update role assignment to allow access.
+</code></pre></div>
+<p>The API server caches webhook answers for <code>aks.entra.webhook-cache-ttl-seconds</code> (5 s); AKS documents up to five
+minutes for an assignment to take effect. Wildcard requests (<code>*</code> verbs, resources or groups) are checked with the <code>*</code>
+kept in the data action, so only a role whose data actions match it by wildcard grants them; guard expands them from
+Azure's operations list. ABAC conditions are not evaluated.</p>
+<p>When floci-az is down, Entra users get <code>401</code> and Azure RBAC requests are refused; the admin certificate and k3s
+components keep working, since the webhooks never see them or give no opinion.</p>
+<hr />
+<h2 id="workload-identity">Workload Identity</h2>
+<h3 id="oidc-issuer">OIDC issuer</h3>
+<p><code>oidcIssuerProfile.enabled</code> is on for new clusters, as AKS does from Kubernetes 1.34, the oldest version the
+emulator runs (<a href="https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer">OIDC issuer</a>); <code>enabled: false</code> at creation keeps it off, and once on it stays on.
+<code>issuerURL</code> is <code>https://{location}.oic.prod-aks.azure.com/{tenantId}/{uuid}/</code>, with a uuid generated once per cluster
+and kept (<a href="https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster">deploy Workload Identity</a>). Clusters stored before round 2 have no issuer until a PUT enables
+it.</p>
+<p>The k3s server signs service account tokens under that URL (<code>service-account-issuer-=</code>, which k3s prepends so tokens
+issued before stay valid), publishes <code>{issuerURL}openid/v1/jwks</code> as its JWKS URL, and follows AKS's token rules: no
+extended expiration and at most 24 hours. Enabling the issuer on an existing cluster replaces its server on the same
+data volume, as AKS restarts its API server. floci-az reads the cluster's JWKS after every reconcile and serves the
+issuer's documents, with the AKS fields (<code>response_types_supported: ["id_token"]</code>, <code>subject_types_supported:
+["public"]</code>, RS256):</p>
+<table>
+<thead>
+<tr>
+<th>Where</th>
+<th>Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The AKS host, when DNS sends <code>{location}.oic.prod-aks.azure.com</code> to floci-az</td>
+<td><code>{issuerURL}.well-known/openid-configuration</code>, <code>{issuerURL}openid/v1/jwks</code></td>
+</tr>
+<tr>
+<td>floci-az's own path</td>
+<td><code>/_floci/aks/oidc/{location}/{tenantId}/{uuid}/.well-known/openid-configuration</code> and <code>.../openid/v1/jwks</code></td>
+</tr>
+</tbody>
+</table>
+<p>floci-az's Entra resolves the issuer in-process, so federated credentials verify offline.
+<code>rotateServiceAccountSigningKeys</code> is not emulated.</p>
+<h3 id="enabling-it">Enabling it</h3>
+<p><code>securityProfile.workloadIdentity.enabled: true</code> needs the issuer; without it the PUT fails with <code>400</code>
+"Enabling workload identity requires enabling OIDC issuer." (the az CLI checks this client-side; the RP's own error is
+not verified). Then:</p>
+<ol>
+<li>The upstream azure-workload-identity webhook v1.6.3 runs in <code>kube-system</code> as <code>azure-wi-webhook-controller-manager</code>,
+   configured by <code>azure-wi-webhook-config</code> (<code>AZURE_TENANT_ID</code> = the cluster's tenant), as AKS's add-on does
+   (<a href="https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview">overview</a>). Its image is <code>aks.workload-identity.webhook-image</code>. Its serving certificate is
+   pre-seeded the way cert-controller generates the ones it keeps, so it is Ready seconds after the cluster (about
+   two minutes otherwise). Pods labelled <code>azure.workload.identity/use: "true"</code> under a service account annotated
+   <code>azure.workload.identity/client-id</code> get <code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_AUTHORITY_HOST</code>,
+   <code>AZURE_FEDERATED_TOKEN_FILE</code> (<code>/var/run/secrets/azure/wi/&lt;hash&gt;/token/azure-identity-token</code> from v1.6.1) and the
+   projected token for <code>api://AzureADTokenExchange</code>. Which webhook version AKS runs today is not verified.</li>
+<li>A selector-less Service <code>floci-az</code> in <code>kube-system</code> points at floci-az (ports 443 and 80 to floci-az's port, where
+   its TLS proxy tells HTTPS from HTTP), and floci-az's CA is published as the ConfigMap <code>floci-az-ca</code> (key
+   <code>ca.crt</code>) in <code>kube-system</code>.</li>
+<li>Pods reach floci-az's Entra over HTTPS, since the Azure SDKs refuse a plain HTTP authority. <strong>floci-az's TLS must
+   be on</strong> (<code>FLOCI_AZ_TLS_ENABLED=true</code>). Two modes (<code>aks.workload-identity.entra-mode</code>):</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th><code>AZURE_AUTHORITY_HOST</code> in pods</th>
+<th>What floci-az adds</th>
+<th>What the workload does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>microsoft-hostnames</code> (default)</td>
+<td><code>https://login.microsoftonline.com/</code>, AKS's value</td>
+<td>a <code>coredns-custom</code> override (key <code>floci-az.override</code>) that answers <code>login.microsoftonline.com</code> and the issuer host with the <code>floci-az</code> Service; those names in floci-az's certificate; Entra's instance discovery (<code>common/discovery/instance</code>)</td>
+<td>trusts <code>floci-az-ca</code></td>
+</tr>
+<tr>
+<td><code>authority</code></td>
+<td><code>https://floci-az.kube-system.svc.cluster.local/</code>, through an <code>AzureStackCloud</code> environment file the webhook reads (<code>AZURE_ENVIRONMENT_FILEPATH</code>)</td>
+<td>the Service name in floci-az's certificate</td>
+<td>trusts <code>floci-az-ca</code>, and disables instance discovery in code (azidentity has no environment variable for it)</td>
+</tr>
+</tbody>
+</table>
+<p>Turning Workload Identity off removes the add-on.</p>
+<p>The exchange itself: the SDK posts the projected token as <code>client_assertion</code> with the identity's client id, and
+floci-az's Entra checks it against the identity's <a href="../managed-identity/">federated identity credentials</a> and answers
+with an access token for the identity, or Entra's AADSTS codes (<a href="../entra/#client-assertions">Entra, client assertions</a>).
+For the AKS subject, the credential's <code>subject</code> is <code>system:serviceaccount:&lt;namespace&gt;:&lt;service account&gt;</code>.</p>
+<h3 id="trusting-floci-azs-ca">Trusting floci-az's CA</h3>
+<p>A projected volume cannot read another namespace, so copy <code>floci-az-ca</code> into the workload's namespace and mount it,
+then point the runtime at it: <code>SSL_CERT_FILE</code> (Go, OpenSSL, curl), <code>REQUESTS_CA_BUNDLE</code> (Python requests),
+<code>NODE_EXTRA_CA_CERTS</code> (Node.js), or a Java truststore. floci-az injects nothing into pods itself.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>configmap<span class="w"> </span>floci-az-ca<span class="w"> </span>-n<span class="w"> </span>kube-system<span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.metadata = {name: "floci-az-ca"}'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>kubectl<span class="w"> </span>apply<span class="w"> </span>-n<span class="w"> </span>my-app<span class="w"> </span>-f<span class="w"> </span>-
+</code></pre></div>
+<h3 id="networking-and-limits">Networking and limits</h3>
+<ul>
+<li>When floci-az runs in a container, the server and the agents join its Docker network, so pods reach it by its
+  address there. When it runs on a Linux host, pods reach it at the gateway of the cluster's own Docker network, the
+  host's address on that bridge; on Docker Desktop, at the address <code>host.docker.internal</code> resolves to.</li>
+<li>A <code>coredns-custom</code> ConfigMap of your own replaces floci-az's override (AKS documents that ConfigMap for your own
+  customizations); keep the <code>floci-az.override</code> key in it.</li>
+<li>Python, .NET, Java and JavaScript SDK behavior against the "Microsoft hostnames" mode is not verified; MSAL Go and
+  azidentity are, and the end-to-end test exchanges the token with curl as the SDKs do.</li>
+</ul>
+<hr />
+<h2 id="loadbalancer-services">LoadBalancer Services</h2>
+<p>New clusters run k3s without its servicelb (<code>load-balancer.mode=emulated</code>, recorded on the cluster), and floci-az
+plays AKS's cloud controller for Services of type <code>LoadBalancer</code> that name no <code>loadBalancerClass</code>
+(kubernetes/cloud-provider <code>wantsLoadBalancer</code>). Every 3 seconds it adds the
+<code>service.kubernetes.io/load-balancer-cleanup</code> finalizer, gives the load balancer an address and an appliance
+container holding it, writes <code>status.loadBalancer.ingress: [{ip}]</code>, and reports the service controller's events
+(<code>EnsuringLoadBalancer</code>, <code>EnsuredLoadBalancer</code>, <code>SyncLoadBalancerFailed</code>, <code>UpdatedLoadBalancer</code>,
+<code>UnAvailableLoadBalancer</code>, <code>DeletingLoadBalancer</code>, <code>DeletedLoadBalancer</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Address (<a href="https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard">public LB</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/internal-lb">internal LB</a>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>default</td>
+<td>a public address from <code>load-balancer.public-cidr</code> (<code>198.51.100.0/24</code>, RFC 5737 TEST-NET-2), unique across every cluster of the emulator</td>
+</tr>
+<tr>
+<td><code>service.beta.kubernetes.io/azure-load-balancer-internal: "true"</code></td>
+<td>the address the cluster's Docker network gives the appliance</td>
+</tr>
+<tr>
+<td><code>service.beta.kubernetes.io/azure-load-balancer-ipv4</code>, else the deprecated <code>spec.loadBalancerIP</code></td>
+<td>that public address when it is in the range and free; otherwise the Service stays <code>&lt;pending&gt;</code> with a <code>SyncLoadBalancerFailed</code> event</td>
+</tr>
+</tbody>
+</table>
+<p>The appliance is a container from the cluster's own k3s image that DNATs each Service port to the Ready agent nodes'
+NodePorts (only those with a ready endpoint under <code>externalTrafficPolicy: Local</code>, never nodes labelled
+<code>node.kubernetes.io/exclude-from-external-load-balancers</code>), honours <code>loadBalancerSourceRanges</code>, and publishes each
+TCP port on a free host port, listed in the Service annotation <code>floci.io/load-balancer-host-ports</code>
+(<code>TCP/80=127.0.0.1:41234</code>). Deleting the Service, or changing its type, removes the appliance and then the finalizer;
+deleting the cluster removes every appliance, and the public network goes with the last public load balancer.</p>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>Public address</th>
+<th>Internal address</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A pod of the cluster</td>
+<td>yes (kube-proxy answers the status address)</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>A container on the cluster network</td>
+<td>through the appliance's cluster-network address</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>A container on <code>floci-az-aks-lb-public</code></td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>The host</td>
+<td><code>127.0.0.1:&lt;host port&gt;</code> from the annotation; on Linux also the address itself</td>
+<td>same</td>
+</tr>
+</tbody>
+</table>
+<p><code>load-balancer.mode=servicelb</code> keeps k3s's servicelb (node addresses in the status) and <code>off</code> leaves Services
+pending. Clusters created before this mode existed keep servicelb when they are restored.</p>
+<p>Not emulated: the public IP and load balancer frontend resources in the node resource group (<code>azure-pip-name</code>,
+<code>azure-dns-label-name</code> and the other cloud-provider-azure annotations are accepted and ignored), a fixed internal
+address (internal load balancers take the appliance's address, since the cluster network has no configured subnet),
+UDP ports on the host, health probes, client IP preservation through the appliance, <code>allocateLoadBalancerNodePorts:
+false</code>, IPv6. The appliance runs privileged, like the cluster's own containers. AKS's load balancer names
+(<code>kubernetes</code>, <code>kubernetes-internal</code>) are not verified at Tier 1.</p>
+<hr />
+<h2 id="fields-stored-and-echoed">Fields stored and echoed</h2>
+<p><code>securityProfile</code> (except <code>workloadIdentity</code>), <code>apiServerAccessProfile</code>, <code>addonProfiles</code>,
+<code>autoUpgradeProfile</code>, <code>autoScalerProfile</code>, <code>linuxProfile</code>, <code>windowsProfile</code>, <code>workloadAutoScalerProfile</code>,
+<code>storageProfile</code>, <code>ingressProfile</code>, <code>azureMonitorProfile</code>, <code>identityProfile</code>, <code>httpProxyConfig</code> and the client ID of
+<code>servicePrincipalProfile</code> (never its secret) are stored and returned as sent, with no runtime effect. Pool
+<code>enableAutoScaling</code>, <code>minCount</code> and <code>maxCount</code> are echoed; nothing autoscales.</p>
+<hr />
+<h2 id="real-vs-mocked-mode">Real vs Mocked Mode</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Real mode (<code>mocked=false</code>)</th>
+<th>Mocked mode (<code>mocked=true</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Docker required</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>provisioningState</code> after create</td>
+<td><code>Creating</code>, then <code>Succeeded</code> once the API server and nodes are ready</td>
+<td><code>Succeeded</code> at once</td>
+</tr>
+<tr>
+<td>Kubeconfig</td>
+<td>Real CA and client certificate, real server URL</td>
+<td>Synthetic: placeholder token, <code>insecure-skip-tls-verify: true</code></td>
+</tr>
+<tr>
+<td><code>kubectl</code> connectivity</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Containers</td>
+<td>server <code>floci-az-aks-{instanceId}</code>, agents <code>floci-az-aks-{instanceId}-{node}</code>, network <code>floci-aks-{instanceId}</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Use case</td>
+<td>Local development, integration tests</td>
+<td>Unit tests, CI without Docker</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">floci-az</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">services</span><span class="p">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">aks</span><span class="p">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="nt">mocked</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">                   </span><span class="c1"># true = no Docker; false = real k3s (default)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">      </span><span class="nt">image-repository</span><span class="p">:</span><span class="w"> </span><span class="s">"rancher/k3s"</span><span class="w"> </span><span class="c1"># each Kubernetes minor runs its pinned tag from this repository</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">      </span><span class="c1"># default-image: ""             # set to pin one image for every cluster, whatever its version</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">      </span><span class="nt">ready-timeout-seconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">      </span><span class="nt">max-nodes-per-cluster</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">      </span><span class="nt">api-server-base-port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">6443</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">      </span><span class="nt">api-server-max-port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">7443</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">      </span><span class="nt">keep-running-on-shutdown</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">      </span><span class="nt">entra</span><span class="p">:</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">        </span><span class="nt">kubeconfig-floci-authority</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">        </span><span class="nt">webhook-cache-ttl-seconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">      </span><span class="nt">workload-identity</span><span class="p">:</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">        </span><span class="nt">entra-mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">microsoft-hostnames</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">        </span><span class="nt">webhook-image</span><span class="p">:</span><span class="w"> </span><span class="s">"mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3"</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w">      </span><span class="nt">load-balancer</span><span class="p">:</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">        </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">emulated</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">        </span><span class="nt">provisioning-delay-seconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="w">        </span><span class="nt">public-cidr</span><span class="p">:</span><span class="w"> </span><span class="s">"198.51.100.0/24"</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="w">        </span><span class="nt">host-ports</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dynamic</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Environment Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_ENABLED</code></td>
+<td><code>true</code></td>
+<td>Enable or disable the AKS service</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_MOCKED</code></td>
+<td><code>false</code></td>
+<td><code>true</code> = skip Docker, synthetic kubeconfig</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_IMAGE_REPOSITORY</code></td>
+<td><code>rancher/k3s</code></td>
+<td>Repository of the k3s images; a mirror needs only the tags of the <a href="#kubernetes-versions">version table</a></td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_DEFAULT_IMAGE</code></td>
+<td>unset</td>
+<td>One image for every cluster; the version then no longer matches what runs</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_READY_TIMEOUT_SECONDS</code></td>
+<td><code>300</code></td>
+<td>How long the API server and the nodes may take to become ready before the operation fails</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_MAX_NODES_PER_CLUSTER</code></td>
+<td><code>5</code></td>
+<td>Node containers per cluster across its pools</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_API_SERVER_BASE_PORT</code></td>
+<td><code>6443</code></td>
+<td>Start of the host port range for k3s API servers</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_API_SERVER_MAX_PORT</code></td>
+<td><code>7443</code></td>
+<td>End of the host port range for k3s API servers</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_KEEP_RUNNING_ON_SHUTDOWN</code></td>
+<td><code>false</code></td>
+<td>Leave the containers running when floci-az stops. Deleting a cluster always removes its containers, volumes and network</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY</code></td>
+<td><code>false</code></td>
+<td>Append <code>--authority-host &lt;floci-az HTTPS URL&gt;/ --disable-instance-discovery</code> to the Entra user kubeconfig</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_ENTRA_WEBHOOK_CACHE_TTL_SECONDS</code></td>
+<td><code>5</code></td>
+<td>How long API servers cache the token and authorization webhook answers</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_ENTRA_MODE</code></td>
+<td><code>microsoft-hostnames</code></td>
+<td>How Workload Identity pods reach floci-az's Entra: <code>microsoft-hostnames</code> or <code>authority</code></td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_MODE</code></td>
+<td><code>emulated</code></td>
+<td>Who answers LoadBalancer Services in new clusters: <code>emulated</code>, <code>servicelb</code> or <code>off</code></td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_PROVISIONING_DELAY_SECONDS</code></td>
+<td><code>0</code></td>
+<td>Seconds a new load balancer stays pending</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_PUBLIC_CIDR</code></td>
+<td><code>198.51.100.0/24</code></td>
+<td>Range of public load balancer addresses</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_HOST_PORTS</code></td>
+<td><code>dynamic</code></td>
+<td><code>dynamic</code> publishes each TCP port on a free host port, <code>none</code> publishes nothing</td>
+</tr>
+<tr>
+<td><code>FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_WEBHOOK_IMAGE</code></td>
+<td><code>mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3</code></td>
+<td>The Workload Identity webhook image</td>
+</tr>
+</tbody>
+</table>
+<p>Images pulled in real mode: the k3s tag of each version used, <code>rancher/local-path-provisioner:v0.0.37</code>,
+<code>rancher/mirrored-library-busybox:1.37.0</code>, what k3s pulls for itself (CoreDNS, metrics-server, pause), and for
+Workload Identity clusters the webhook image above.</p>
+<hr />
+<h2 id="docker-compose">Docker Compose</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">services</span><span class="p">:</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">floci-az</span><span class="p">:</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">floci/floci-az:latest</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"4577:4577"</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"6443-6450:6443-6450"</span><span class="w">   </span><span class="c1"># k3s API server ports (one per cluster)</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span><span class="w">   </span><span class="c1"># required for real k3s mode</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">      </span><span class="nt">FLOCI_AZ_SERVICES_AKS_MOCKED</span><span class="p">:</span><span class="w"> </span><span class="s">"false"</span>
+</code></pre></div>
+<blockquote>
+<p><strong>Sidecar ports:</strong> each k3s server binds a host port in the <code>6443–7443</code> range through the Docker daemon. Agents
+need no port. Publish the range on the <code>floci-az</code> service if your application reaches the API server from outside
+Docker.</p>
+</blockquote>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>┌────────────────────────────────────────────────────────────────────────┐
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>│  Your App                                                              │
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>│                                                                        │
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>│  ARM REST calls ──────► floci-az :4577 ──► AksHandler ──► reconciler   │
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>│  (create, scale, upgrade,                (state, LRO)    (containers)  │
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>│   get credentials)                                                     │
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>│                                                                        │
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>│  kubectl / k8s client ─────────► k3s server :6443 (no kubelet)         │
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>│                                  floci-az-aks-{instanceId}             │
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>│                                      │  network floci-aks-{instanceId} │
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>│                                      ├── k3s agent aks-nodepool1-…-vmss000000
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>│                                      └── k3s agent aks-userpool-…-vmss000000
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>└────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<p>The management plane (ARM API) goes through floci-az on port 4577. The data plane (kubectl, Kubernetes API) connects
+directly to the k3s server on its allocated port: floci-az is not in the data path.</p>
+<hr />
+<h2 id="sources">Sources</h2>
+<p>Checked on 2026-11-10 and 2026-11-11.</p>
+<ul>
+<li>AKS REST spec, <code>Microsoft.ContainerService/aks/stable/2026-08-01</code> (<a href="https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/managedClusters.json">managedClusters.json</a> at
+  <code>ebc13f6</code>, <a href="https://github.com/Azure/azure-rest-api-specs/tree/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples">examples</a>)</li>
+<li>Microsoft Learn: <a href="https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions">supported Kubernetes versions</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/use-labels">labels</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/use-nvidia-gpu">use GPUs</a>,
+  <a href="https://learn.microsoft.com/en-us/azure/aks/aks-managed-gpu-nodes">AKS-managed GPU node pools</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/concepts-storage">storage concepts</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/azure-csi-disk-storage-provision">Azure Disks</a>,
+  <a href="https://learn.microsoft.com/en-us/azure/aks/create-volume-azure-files">Azure Files</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/concepts-network-azure-cni-overlay">Azure CNI Overlay concepts</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/azure-cni-overlay">configure Azure CNI Overlay</a>,
+  <a href="https://learn.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest">az aks</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/local-accounts">local accounts</a>, <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/error-codes/aks-error-code-page">error codes</a>, <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-kubernetes/error-codes/dnsserviceipoutofservicecidr-error">DnsServiceIpOutOfServiceCidr</a>,
+  <a href="https://learn.microsoft.com/en-us/azure/virtual-machine-scale-sets/virtual-machine-scale-sets-instance-ids">VMSS instance names</a>, <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/overview">VM sizes</a></li>
+<li>Azure clients: <a href="https://github.com/Azure/azure-cli/blob/74f7e490691019bd24dd46ca1e5712c57ea66af0/src/azure-cli/azure/cli/command_modules/acs/tests/latest/test_custom.py">azure-cli <code>merge_kubernetes_configurations</code> test</a>, <a href="https://github.com/Azure/azure-cli/blob/74f7e490691019bd24dd46ca1e5712c57ea66af0/src/azure-cli/azure/cli/command_modules/acs/tests/latest/recordings/test_aks_create_default.yaml">azure-cli recording of
+  <code>listClusterUserCredential</code></a>, <a href="https://github.com/kubernetes-sigs/cloud-provider-azure/blob/baabfb774d73cdeb9d2ad40b0a3f495103d7b712/pkg/provider/azure_vmss.go">cloud-provider-azure <code>ConvertResourceGroupNameToLower</code></a></li>
+<li>Raw AKS errors quoted in issues: <a href="https://github.com/rancher/aks-operator/issues/678">K8sVersionNotSupported</a>, <a href="https://github.com/pulumi/templates/issues/781">AgentPoolK8sVersionNotSupported</a>,
+  <a href="https://github.com/rancher/dashboard/issues/11884">OperationNotAllowed upgrade</a>, <a href="https://github.com/Azure/terraform-azurerm-aks/issues/465">NodePoolMcVersionIncompatible</a>,
+  <a href="https://github.com/hashicorp/terraform-provider-azurerm/issues/20791">NotAllAgentPoolOrchestratorVersionSpecifiedAndUnchanged</a>, <a href="https://github.com/Azure/caf-terraform-landingzones/issues/416">disable local accounts</a>;
+  <a href="https://github.com/Azure/AKS/discussions/2784"><code>kubectl get sc</code> on AKS</a></li>
+<li>Entra and Azure RBAC: <a href="https://learn.microsoft.com/en-us/azure/aks/entra-id-control-plane-authentication">control plane authentication</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/kubelogin-authentication">kubelogin authentication</a>,
+  <a href="https://learn.microsoft.com/en-us/azure/aks/concepts-cluster-authorization">authorization concepts</a>, <a href="https://github.com/MicrosoftDocs/azure-aks-docs/blob/611a5efc0de581eac904bca48c90156ba75c8431/articles/aks/concepts-identity.md">identity concepts (2025 revision)</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/privileged-identity-management">PIM example</a>;
+  kubeguard/guard v0.16.28 <a href="https://github.com/kubeguard/guard/blob/v0.16.28/auth/providers/azure/azure.go">authentication</a> and <a href="https://github.com/kubeguard/guard/blob/v0.16.28/authz/providers/azure/rbac/checkaccessreqhelper.go">authorization</a>; kubelogin v0.2.22</li>
+<li>Workload Identity: <a href="https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer">OIDC issuer</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster">deploy Workload Identity</a>, <a href="https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview">overview</a>;
+  azure-workload-identity v1.6.3 <a href="https://github.com/Azure/azure-workload-identity/blob/v1.6.3/deploy/azure-wi-webhook.yaml"><code>deploy/azure-wi-webhook.yaml</code></a>; cert-controller v0.16.0
+  <a href="https://github.com/open-policy-agent/cert-controller/blob/v0.16.0/pkg/rotator/rotator.go"><code>pkg/rotator/rotator.go</code></a>; k3s CoreDNS manifest (<code>/etc/coredns/custom/*.override</code>)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "search.highlight", "search.suggest", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

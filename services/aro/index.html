@@ -1,0 +1,3358 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fast, free, open-source local Azure emulator">
+      
+      
+      
+        <link rel="canonical" href="https://floci.io/floci-az/services/aro/">
+      
+      
+        <link rel="prev" href="../aks/">
+      
+      
+        <link rel="next" href="../container-apps/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/floci.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Azure Red Hat OpenShift - Floci-AZ</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  
+  <!-- Umami analytics — tracks docs visits (privacy-friendly, cookieless) -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="b2ab8ccd-4619-4b94-bfa6-e8870961d6eb"></script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#azure-red-hat-openshift-aro" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Floci-AZ" class="md-header__button md-logo" aria-label="Floci-AZ" data-md-component="logo">
+      
+  <img src="../../assets/floci-header.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Floci-AZ
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Azure Red Hat OpenShift
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/floci-io/floci-az" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    floci-io/floci-az
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../configuration/docker-compose/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../ui/" class="md-tabs__link">
+          
+  
+  
+  Web Console
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Floci-AZ" class="md-nav__button md-logo" aria-label="Floci-AZ" data-md-component="logo">
+      
+  <img src="../../assets/floci-header.svg" alt="logo">
+
+    </a>
+    Floci-AZ
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/floci-io/floci-az" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    floci-io/floci-az
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/azure-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure CLI & SDK Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../terraform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terraform / OpenTofu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/docker-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Compose
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/docker-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Images
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/ports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ports Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emulator Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/advanced/application-yml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    application.yml Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web Console
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ui/console-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console Contract v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Resource Manager
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blob/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blob Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Queue Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../table/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Table Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../functions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Functions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../app-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    App Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signalr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure SignalR Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../key-vault/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Key Vault
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../entra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Entra ID
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-hub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Hubs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-bus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Bus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cosmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cosmos DB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure SQL Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgresql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for PostgreSQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for MySQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mariadb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Database for MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Kubernetes Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Red Hat OpenShift
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Red Hat OpenShift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#long-running-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long-running operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quickstart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickstart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quickstart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reaching-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-cluster-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a cluster looks like
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a cluster looks like">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arm-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ARM resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inside-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inside the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#oc-login-and-the-oauth-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        oc login and the OAuth server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The web console
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#persistence-and-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistence and restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-openshift-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is not OpenShift here
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container-apps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apim/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Virtual Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Virtual Machines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Cache for Redis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aci/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Container Instances
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Monitor / Log Analytics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../email/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Communication Services Email
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../managed-identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Managed Identity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../authorization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure RBAC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resourcegraph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Resource Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../managementgroups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Azure Management Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARM Template Deployments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#long-running-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long-running operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quickstart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickstart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quickstart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reaching-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-cluster-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a cluster looks like
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a cluster looks like">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arm-resource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ARM resource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inside-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inside the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#oc-login-and-the-oauth-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        oc login and the OAuth server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The web console
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#persistence-and-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistence and restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-openshift-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is not OpenShift here
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="azure-red-hat-openshift-aro">Azure Red Hat OpenShift (ARO)</h1>
+<p>Serves <code>Microsoft.RedHatOpenShift/openShiftClusters</code> to ARM clients. Request and response shapes follow the 2025-07-25
+spec (<a href="https://github.com/Azure/azure-rest-api-specs/tree/main/specification/redhatopenshift/resource-manager/Microsoft.RedHatOpenShift/OpenShiftClusters/stable/2025-07-25">azure-rest-api-specs <code>OpenShiftClusters/stable/2025-07-25</code></a>); older api-versions are accepted with the
+same shapes. The Java SDK <code>azure-resourcemanager-redhatopenshift</code> 1.0.0 (api-version 2025-07-25) is exercised by
+<code>AroCompatibilityTest</code> in the Java compatibility suite.</p>
+<blockquote>
+<p><strong>Requires Docker</strong> (in real mode): each cluster is one <a href="https://github.com/openshift/microshift">MicroShift</a> container, run the way
+<a href="https://github.com/minc-org/minc">MINC</a> runs it (privileged, systemd inside, CRI-O, kindnet). The Docker daemon must be rootful with cgroup v2.
+Set <code>FLOCI_AZ_SERVICES_ARO_MOCKED=true</code> for clusters that are ARM state only, with no container.</p>
+</blockquote>
+<p>A real-mode cluster is a single-node <strong>OKD</strong> (not OCP) MicroShift cluster. It is not a full OpenShift: see
+<a href="#what-is-not-openshift-here">What is not OpenShift here</a> before relying on it.</p>
+<hr />
+<h2 id="endpoints">Endpoints</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>PUT    /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RedHatOpenShift/openShiftClusters/{name}
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>PATCH  .../openShiftClusters/{name}
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>GET    .../openShiftClusters/{name}
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>DELETE .../openShiftClusters/{name}
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>GET    /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.RedHatOpenShift/openShiftClusters
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>GET    /subscriptions/{sub}/providers/Microsoft.RedHatOpenShift/openShiftClusters
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>POST   .../openShiftClusters/{name}/listCredentials
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>POST   .../openShiftClusters/{name}/listAdminCredentials
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>GET    /subscriptions/{sub}/providers/Microsoft.RedHatOpenShift/locations/{location}/openShiftVersions
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>GET    /subscriptions/{sub}/providers/Microsoft.RedHatOpenShift/locations/{location}/openShiftVersions/{version}
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>GET    /subscriptions/{sub}/providers/Microsoft.RedHatOpenShift/locations/{location}/operationsstatus/{id}
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>GET    /subscriptions/{sub}/providers/Microsoft.RedHatOpenShift/locations/{location}/operationresults/{id}
+</code></pre></div>
+<p>Not served from the spec: <code>GET /providers/Microsoft.RedHatOpenShift/operations</code> and the
+<code>locations/{location}/platformWorkloadIdentityRoleSets</code> reads.</p>
+<h3 id="long-running-operations">Long-running operations</h3>
+<p>As the ARO resource provider answers them (<a href="https://github.com/Azure/ARO-RP/tree/master/pkg/frontend">ARO-RP frontend</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PUT, new cluster</td>
+<td><code>201</code>, body with <code>provisioningState: Creating</code>, <code>Azure-AsyncOperation: .../locations/{loc}/operationsstatus/{id}</code></td>
+</tr>
+<tr>
+<td>PUT or PATCH, existing cluster</td>
+<td><code>200</code>, body with <code>provisioningState: Updating</code>, <code>Azure-AsyncOperation</code></td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>202</code> with <code>Location: .../operationresults/{id}</code> and <code>Azure-AsyncOperation: .../operationsstatus/{id}</code>; <code>204</code> when the cluster does not exist</td>
+</tr>
+<tr>
+<td><code>operationsstatus/{id}</code></td>
+<td><code>{"id","name","status","startTime","endTime","error"}</code>; <code>status</code> is the cluster's state while the operation runs (<code>Creating</code>, <code>Updating</code>, <code>Deleting</code>), then <code>Succeeded</code> or <code>Failed</code></td>
+</tr>
+<tr>
+<td><code>operationresults/{id}</code></td>
+<td><code>202</code> while the operation runs, then <code>204</code> for a delete, <code>200</code> with the cluster otherwise</td>
+</tr>
+</tbody>
+</table>
+<p>The operation status is derived from the cluster: a create is <code>Succeeded</code> only once the cluster is ready (see
+<a href="#readiness">Readiness</a>), <code>Failed</code> when its container cannot start or it is not ready within
+<code>ready-timeout-seconds</code> (error code <code>InternalServerError</code>, with the reason). Updates change no runtime state and
+complete on the next poll. Every answer carries <code>Retry-After: 1</code>. Operations are kept in memory, newest 1000.</p>
+<p>In mocked mode a create and an update are <code>Succeeded</code> at once.</p>
+<h3 id="errors">Errors</h3>
+<p>The ARO frontend's codes and messages, with <code>target</code> where ARO sets one:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unknown cluster</td>
+<td><code>404 ResourceNotFound</code> "The Resource 'openshiftclusters/{name}' under resource group '{rg}' was not found." (ARO lowercases the path)</td>
+</tr>
+<tr>
+<td>Version with no image</td>
+<td><code>400 InvalidParameter</code>, target <code>properties.clusterProfile.version</code>, "The requested OpenShift version '{v}' is invalid." (<a href="https://github.com/Azure/ARO-RP/blob/master/pkg/frontend/validate.go">ARO-RP <code>validateInstallVersion</code></a>)</td>
+</tr>
+<tr>
+<td>Bad domain, CIDR, client id, visibility, profile counts</td>
+<td><code>400 InvalidParameter</code> (or <code>InvalidCIDRRange</code>, <code>InvalidNetworkAddress</code>) with ARO's static-validation message</td>
+</tr>
+<tr>
+<td>Change to an immutable property</td>
+<td><code>400 PropertyChangeNotAllowed</code> "Changing property 'properties.{path}' is not allowed."</td>
+</tr>
+<tr>
+<td>PUT, PATCH, DELETE or credentials while <code>Creating</code>, <code>Updating</code> or <code>Deleting</code></td>
+<td><code>400 RequestNotAllowed</code> "Request is not allowed in provisioningState '{state}'."</td>
+</tr>
+<tr>
+<td>PUT or PATCH after a failed create</td>
+<td><code>400 RequestNotAllowed</code> "Request is not allowed on cluster whose creation failed. Delete the cluster."</td>
+</tr>
+<tr>
+<td>Unknown operation</td>
+<td><code>404 NotFound</code> "The entity was not found."</td>
+</tr>
+<tr>
+<td>Unknown <code>openShiftVersions/{v}</code></td>
+<td><code>400 ResourceNotFound</code> "The Resource openShiftVersion with version '{v}' was not found in the namespace 'microsoft.redhatopenshift' for api version '{api}'."</td>
+</tr>
+</tbody>
+</table>
+<p>Validation follows ARO-RP <code>pkg/api/v20250725/openshiftcluster_validatestatic.go</code> for the fields a request sends;
+fields it omits get the defaults below instead of ARO's "The field '...' is required." Mutable after creation, as in
+<code>openshiftcluster_updatepolicy.go</code>: <code>tags</code>, <code>servicePrincipalProfile.clientId</code>/<code>clientSecret</code>,
+<code>platformWorkloadIdentityProfile</code>, <code>networkProfile.loadBalancerProfile.managedOutboundIps</code>, <code>identity</code>.</p>
+<hr />
+<h2 id="quickstart">Quickstart</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">ARM</span><span class="o">=</span>http://localhost:4577/subscriptions/00000000-0000-0000-0000-000000000001
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ARM</span><span class="s2">/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo?api-version=2025-07-25"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"location":"eastus","properties":{"clusterProfile":{"domain":"demo","version":"4.19.0"}}}'</span><span class="w"> </span>-D<span class="w"> </span>-<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span>azure-asyncoperation
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># poll the operation until "status": "Succeeded" (about 2 to 3 minutes on a laptop)</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"&lt;Azure-AsyncOperation URL&gt;"</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"</span><span class="nv">$ARM</span><span class="s2">/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo/listAdminCredentials?api-version=2025-07-25"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['kubeconfig']).decode())"</span><span class="w"> </span>&gt;<span class="w"> </span>demo.kubeconfig
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>oc<span class="w"> </span>--kubeconfig<span class="w"> </span>demo.kubeconfig<span class="w"> </span>get<span class="w"> </span>nodes,clusterversion,storageclass
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># or log in as kubeadmin, as on ARO (see "oc login and the OAuth server")</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="nv">CLUSTER</span><span class="o">=</span><span class="s2">"</span><span class="nv">$ARM</span><span class="s2">/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo"</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="nv">API</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$CLUSTER</span><span class="s2">?api-version=2025-07-25"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sys,json; print(json.load(sys.stdin)['properties']['apiserverProfile']['url'])"</span><span class="k">)</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="nv">PW</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"</span><span class="nv">$CLUSTER</span><span class="s2">/listCredentials?api-version=2025-07-25"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sys,json; print(json.load(sys.stdin)['kubeadminPassword'])"</span><span class="k">)</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>oc<span class="w"> </span>login<span class="w"> </span><span class="s2">"</span><span class="nv">$API</span><span class="s2">"</span><span class="w"> </span>-u<span class="w"> </span>kubeadmin<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$PW</span><span class="s2">"</span><span class="w"> </span>--insecure-skip-tls-verify<span class="w">   </span><span class="c1"># or --certificate-authority=&lt;CA of demo.kubeconfig&gt;</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>oc<span class="w"> </span>whoami<span class="w">                                                           </span><span class="c1"># kube:admin</span>
+</code></pre></div>
+<p>The <code>az aro</code> commands and Terraform's <code>azurerm_redhat_openshift_cluster</code> have not been tested against floci-az.
+<code>az aro create</code> also reads the virtual network and assigns roles before it sends the PUT, so it depends on more than
+this service.</p>
+<h3 id="reaching-routes">Reaching Routes</h3>
+<p>The router's ports 80 and 443 are published on host ports from the same range as the API server. A Route gets the
+host <code>&lt;route&gt;-&lt;namespace&gt;.apps.&lt;domain&gt;</code>, which does not resolve; send the request to the router with the host:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>port<span class="w"> </span>floci-az-aro-&lt;id&gt;<span class="w"> </span><span class="m">80</span><span class="w">            </span><span class="c1"># the host port of the router's HTTP port</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Host: web-demo.apps.demo.eastus.aroapp.io"</span><span class="w"> </span>http://localhost:&lt;port&gt;/
+</code></pre></div>
+<hr />
+<h2 id="what-a-cluster-looks-like">What a cluster looks like</h2>
+<h3 id="arm-resource">ARM resource</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>Microsoft.RedHatOpenShift/openShiftClusters</code></td>
+<td>spec, ARO-RP <code>register.go</code></td>
+</tr>
+<tr>
+<td><code>clusterProfile.domain</code></td>
+<td>as sent; when absent, a letter and seven lowercase alphanumerics, as <code>az aro create</code> picks it</td>
+<td><a href="https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/aro/custom.py">azure-cli <code>aro/custom.py</code></a></td>
+</tr>
+<tr>
+<td>full domain</td>
+<td><code>&lt;domain&gt;.&lt;location&gt;.aroapp.io</code> for a domain without a dot, the domain itself otherwise</td>
+<td>ARO-RP <code>pkg/util/dns</code> <code>ManagedDomain</code></td>
+</tr>
+<tr>
+<td><code>clusterProfile.version</code></td>
+<td>as requested; default the newest advertised</td>
+<td>ARO-RP <code>setDefaultVersionIfEmpty</code></td>
+</tr>
+<tr>
+<td><code>clusterProfile.resourceGroupId</code></td>
+<td>as sent, lowercased; default <code>/subscriptions/{sub}/resourceGroups/aro-{domain}</code>. The ARO API requires the field; <code>az aro create</code> sends <code>aro-&lt;random id&gt;</code>, the same id it uses as the domain when none is given</td>
+<td>ARO-RP <code>putorpatch</code> (lowercases), <a href="https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/aro/custom.py">azure-cli <code>aro/custom.py</code></a></td>
+</tr>
+<tr>
+<td><code>clusterProfile.fipsValidatedModules</code></td>
+<td>default <code>Disabled</code></td>
+<td>ARO-RP <code>api.SetDefaults</code></td>
+</tr>
+<tr>
+<td><code>consoleProfile.url</code></td>
+<td><code>https://console-openshift-console.apps.&lt;full domain&gt;/</code>; in real mode with the router's published HTTPS port, <code>https://console-openshift-console.apps.&lt;full domain&gt;:&lt;port&gt;/</code> (see <a href="#the-web-console">the web console</a>)</td>
+<td><a href="https://learn.microsoft.com/en-us/azure/openshift/connect-cluster">Connect to an ARO cluster</a> (shape); emulator choice (reachability)</td>
+</tr>
+<tr>
+<td><code>apiserverProfile.url</code></td>
+<td>real mode: the cluster's API proxy in floci-az (<code>https://localhost:&lt;proxy port&gt;/</code>, see <a href="#oc-login-and-the-oauth-server"><code>oc login</code></a>); mocked: <code>https://api.&lt;full domain&gt;:6443/</code></td>
+<td>spec example (shape); emulator choice (reachability)</td>
+</tr>
+<tr>
+<td><code>apiserverProfile.ip</code>, <code>ingressProfiles[].ip</code></td>
+<td>the address the ports are published on (<code>127.0.0.1</code> locally)</td>
+<td>emulator choice</td>
+</tr>
+<tr>
+<td><code>networkProfile.podCidr</code> / <code>serviceCidr</code></td>
+<td>default <code>10.128.0.0/14</code> / <code>172.30.0.0/16</code></td>
+<td><a href="https://learn.microsoft.com/en-us/cli/azure/aro?view=azure-cli-latest#az-aro-create"><code>az aro create</code> reference</a></td>
+</tr>
+<tr>
+<td><code>networkProfile.outboundType</code>, <code>preconfiguredNSG</code>, <code>loadBalancerProfile</code></td>
+<td>default <code>Loadbalancer</code>, <code>Disabled</code>, <code>{"managedOutboundIps":{"count":1}}</code></td>
+<td>ARO-RP <code>api.SetDefaults</code></td>
+</tr>
+<tr>
+<td><code>masterProfile.vmSize</code></td>
+<td>default <code>Standard_D8s_v5</code></td>
+<td><a href="https://learn.microsoft.com/en-us/cli/azure/aro?view=azure-cli-latest#az-aro-create"><code>az aro create</code> reference</a></td>
+</tr>
+<tr>
+<td><code>workerProfiles</code></td>
+<td>default one profile <code>worker</code>, <code>Standard_D4s_v5</code>, 128 GB, count 3</td>
+<td><a href="https://learn.microsoft.com/en-us/cli/azure/aro?view=azure-cli-latest#az-aro-create"><code>az aro create</code> reference</a></td>
+</tr>
+<tr>
+<td><code>workerProfilesStatus</code></td>
+<td>on GET and list only, one entry per zone <code>&lt;infraID&gt;-worker-&lt;location&gt;&lt;1..3&gt;</code>, the count spread across them</td>
+<td>ARO-RP enricher (fields); MachineSet naming not verified on a live cluster</td>
+</tr>
+<tr>
+<td><code>servicePrincipalProfile</code></td>
+<td><code>clientId</code> only, never the secret; the pull secret is never returned either</td>
+<td>ARO-RP <code>putorpatch</code></td>
+</tr>
+<tr>
+<td><code>listCredentials</code></td>
+<td><code>kubeadminUsername: kubeadmin</code>, a password stored with the cluster, 23 characters <code>xxxxx-xxxxx-xxxxx-xxxxx</code> from letters and digits without <code>l</code>, <code>O</code>, <code>0</code>, <code>1</code></td>
+<td><a href="https://github.com/openshift/installer/blob/main/pkg/asset/password/password.go">openshift/installer <code>pkg/asset/password</code></a></td>
+</tr>
+<tr>
+<td><code>listAdminCredentials</code></td>
+<td><code>{"kubeconfig": "&lt;base64&gt;"}</code>, MicroShift's admin kubeconfig (client certificate <code>system:admin</code>) with the server set to <code>apiserverProfile.url</code></td>
+<td>spec example</td>
+</tr>
+<tr>
+<td><code>openShiftVersions</code></td>
+<td>one entry per configured minor, <code>name</code> and <code>properties.version</code> the <code>x.y.z</code> its image tag starts with, <code>type: Microsoft.RedHatOpenShift/OpenShiftVersion</code>, no <code>id</code></td>
+<td>ARO-RP <code>openShiftVersionConverter</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>platformWorkloadIdentityProfile</code>, <code>identity</code>, subnet ids, disk encryption sets and fields of older api-versions are
+stored and echoed; nothing acts on them.</p>
+<h3 id="inside-the-cluster">Inside the cluster</h3>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Value</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Node</td>
+<td>one node <code>&lt;infraID&gt;-master-0</code>, roles <code>control-plane,master,worker</code>; the container's hostname is the node name too</td>
+<td>ARO-RP <code>generateInfraID</code> (<code>&lt;name&gt;-&lt;5 random&gt;</code>, 27 characters at most)</td>
+</tr>
+<tr>
+<td>Node labels</td>
+<td><code>topology.kubernetes.io/region=&lt;location&gt;</code>, <code>topology.kubernetes.io/zone=&lt;location&gt;-1</code>, <code>node.kubernetes.io/instance-type=&lt;master vmSize&gt;</code></td>
+<td><a href="https://learn.microsoft.com/en-us/azure/aks/reliability-availability-zones-configure">AKS availability zones</a> (Azure zone label format)</td>
+</tr>
+<tr>
+<td><code>spec.providerID</code></td>
+<td><code>azure:///subscriptions/&lt;sub&gt;/resourceGroups/&lt;cluster resource group&gt;/providers/Microsoft.Compute/virtualMachines/&lt;node&gt;</code></td>
+<td>Azure cloud provider format</td>
+</tr>
+<tr>
+<td>Pod and service CIDRs</td>
+<td>the cluster's <code>podCidr</code> and <code>serviceCidr</code> (MicroShift <code>network.clusterNetwork</code>/<code>serviceNetwork</code>); DNS at <code>.10</code> of the service CIDR</td>
+<td>MicroShift config</td>
+</tr>
+<tr>
+<td>Routes</td>
+<td><code>*.apps.&lt;full domain&gt;</code> (MicroShift <code>dns.baseDomain</code>)</td>
+<td>MicroShift config</td>
+</tr>
+<tr>
+<td>API certificate</td>
+<td>also valid for <code>api.&lt;full domain&gt;</code> and the container name</td>
+<td>MicroShift <code>apiServer.subjectAltNames</code></td>
+</tr>
+<tr>
+<td><code>managed-csi</code> (default)</td>
+<td><code>disk.csi.azure.com</code>, <code>skuname: Premium_LRS</code>, <code>WaitForFirstConsumer</code>, expansion on, <code>Delete</code></td>
+<td><a href="https://github.com/openshift/csi-operator/blob/release-4.19/assets/overlays/azure-disk/generated/standalone/storageclass.yaml">openshift/csi-operator release-4.19</a>; the <a href="https://learn.microsoft.com/en-us/azure/openshift/openshift-faq">ARO FAQ</a>: "Azure Disk (Premium_LRS) is configured as the default storage class"</td>
+</tr>
+<tr>
+<td><code>azurefile-csi</code></td>
+<td><code>file.csi.azure.com</code>, <code>skuName: Standard_LRS</code>, <code>matchTags</code>, <code>tags</code>, <code>Immediate</code>, expansion on, <code>Delete</code>; RWX. Not created for a cluster with <code>platformWorkloadIdentityProfile</code> (managed identities)</td>
+<td><a href="https://github.com/openshift/csi-operator/blob/release-4.19/assets/overlays/azure-file/generated/standalone/storageclass.yaml">openshift/csi-operator release-4.19</a>; <a href="https://learn.microsoft.com/en-us/azure/openshift/howto-configure-azure-file-storageclass">Configure an Azure File StorageClass</a>: "The default Azure File StorageClass is disabled in clusters with managed identity enabled by default"</td>
+</tr>
+<tr>
+<td><code>ClusterVersion/version</code></td>
+<td><code>spec.clusterID</code> a random UUID; <code>status.desired.version</code> and a <code>Completed</code> history entry with the OKD version the image runs (<code>4.19.0-okd-scos.17</code>), image <code>quay.io/okd/scos-release:&lt;tag&gt;</code></td>
+<td><a href="https://github.com/openshift/api/tree/release-4.19/config/v1/zz_generated.crd-manifests">openshift/api release-4.19</a> CRD</td>
+</tr>
+<tr>
+<td><code>Infrastructure/cluster</code></td>
+<td>platform <code>Azure</code>, <code>apiServerURL https://api.&lt;full domain&gt;:6443</code>, <code>apiServerInternalURI https://api-int.&lt;full domain&gt;:6443</code>, <code>infrastructureName &lt;infraID&gt;</code>, <code>platformStatus.azure</code> with <code>cloudName AzurePublicCloud</code>, the cluster and network resource groups, topology <code>HighlyAvailable</code> as ARO reports it</td>
+<td>openshift/api CRD</td>
+</tr>
+<tr>
+<td><code>Ingress/cluster</code></td>
+<td><code>spec.domain apps.&lt;full domain&gt;</code></td>
+<td>openshift/api CRD</td>
+</tr>
+<tr>
+<td>Secret <code>kube-system/kubeadmin</code></td>
+<td>key <code>kubeadmin</code>, the bcrypt (<code>$2a$</code>, cost 10) of the <code>listCredentials</code> password, created once when the cluster first becomes ready</td>
+<td><a href="https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/authentication-kubeadmin.adoc">openshift-docs <code>authentication-kubeadmin.adoc</code></a>; installer's Go <code>bcrypt.DefaultCost</code></td>
+</tr>
+<tr>
+<td>ClusterRoleBinding <code>cluster-admins</code></td>
+<td><code>cluster-admin</code> for Group <code>system:cluster-admins</code> and User <code>system:admin</code>, reapplied at every start</td>
+<td><a href="https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/rbac-viewing-cluster-roles.adoc">openshift-docs <code>rbac-viewing-cluster-roles.adoc</code></a></td>
+</tr>
+<tr>
+<td>SCCs</td>
+<td>MicroShift's: <code>anyuid</code>, <code>hostaccess</code>, <code>hostmount-anyuid</code>, <code>hostnetwork</code>, <code>hostnetwork-v2</code>, <code>nonroot</code>, <code>nonroot-v2</code>, <code>privileged</code>, <code>restricted</code>, <code>restricted-v2</code>; a new namespace gets <code>openshift.io/sa.scc.uid-range</code> and the Pod Security labels <code>restricted</code></td>
+<td>MicroShift</td>
+</tr>
+</tbody>
+</table>
+<p>Pod admission works as on OpenShift. A pod created by a controller (a Deployment, a Job) is admitted with the
+service account's SCCs, which is <code>restricted-v2</code> with a UID from the namespace range. A bare pod created directly by a
+cluster administrator, such as the admin kubeconfig's <code>system:admin</code>, is matched first against <code>anyuid</code>, which has
+priority 10 for administrators, gets no restricted defaults, and is then refused by Pod Security <code>restricted</code> unless it
+sets a restricted security context itself: "When you create a workload resource, such as deployment, only the service
+account is used to find the SCCs and admit the pods" (<a href="https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/security-context-constraints-about.adoc">openshift-docs, SCCs</a>). Both cases were measured on an
+emulated cluster.</p>
+<p>The two storage classes are served by <code>rancher/local-path-provisioner</code> instances registered under the Azure CSI
+driver names, in <code>openshift-cluster-csi-drivers</code> (deployments <code>azure-disk-csi-driver-controller</code> and, when the cluster
+has <code>azurefile-csi</code>, <code>azure-file-csi-driver-controller</code>, labelled <code>app.kubernetes.io/managed-by: floci-az</code>). Volumes are directories in
+the cluster's data volume; <code>azurefile-csi</code> drops the CIFS <code>mountOptions</code> (<code>mfsymlinks</code>, <code>cache=strict</code>, ...) that a
+host-path volume cannot take, and resizing a claim does nothing. The cluster pulls
+<code>docker.io/rancher/local-path-provisioner</code> and <code>docker.io/library/busybox</code> the first time.</p>
+<p>The <code>config.openshift.io</code> CRDs are the Default feature-set manifests of openshift/api, applied with their objects at
+every start through MicroShift's <code>manifests.d</code>; the status is written once the cluster is up. No operator reconciles
+them.</p>
+<h3 id="readiness">Readiness</h3>
+<p>A cluster is <code>Succeeded</code> when MicroShift's systemd unit is active, the API answers <code>/readyz</code>, every pod in
+<code>openshift-dns</code>, <code>openshift-ingress</code>, <code>openshift-service-ca</code> and <code>openshift-cluster-csi-drivers</code> runs, the node,
+<code>ClusterVersion</code>, <code>Infrastructure</code> and <code>Ingress</code> have been updated, <code>kube-system/kubeadmin</code> and <code>cluster-admins</code> exist,
+and the cluster's API proxy serves the OAuth metadata, so <code>oc login</code> works as soon as the cluster is <code>Succeeded</code>. Measured: on a 6-CPU arm64 VM the API answered
+after 52 s and every pod ran after 140 to 170 s; on an amd64 Docker-in-Docker runner the cluster was <code>Succeeded</code> after
+126 to 159 s. The first create also pulls the image (0.85 GB arm64, 1.1 GB amd64). The container uses about 1.3 GiB of
+memory.</p>
+<hr />
+<h2 id="oc-login-and-the-oauth-server"><code>oc login</code> and the OAuth server</h2>
+<p>On ARO, <code>oc login &lt;apiserverProfile.url&gt; -u kubeadmin -p &lt;kubeadminPassword&gt;</code> logs in through the cluster's OAuth
+server (<a href="https://learn.microsoft.com/en-us/azure/openshift/connect-cluster">Connect to an ARO cluster</a>). MicroShift has no OAuth server: its API server answers 404 at
+<code>/.well-known/oauth-authorization-server</code> and takes no token webhook or extra flags (MicroShift <code>pkg/config</code>,
+<code>assets/controllers/kube-apiserver/defaultconfig.yaml</code>: <code>oauthMetadataFile: ""</code>). So floci-az runs a TLS <strong>API
+proxy</strong> per cluster, in its own process, on a host port from <code>proxy-base-port</code>-<code>proxy-max-port</code> (7700-7799).
+<code>apiserverProfile.url</code> and the admin kubeconfig point at it. It serves the OpenShift OAuth server and forwards every
+other request to MicroShift's API server.</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Answer</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /.well-known/oauth-authorization-server</code></td>
+<td>the authentication operator's metadata; <code>issuer</code> is <code>https://&lt;the Host the client used&gt;</code></td>
+<td><a href="https://github.com/openshift/cluster-authentication-operator/blob/release-4.19/pkg/controllers/metadata/metadata_controller.go">cluster-authentication-operator <code>metadata_controller.go</code></a></td>
+</tr>
+<tr>
+<td><code>/oauth/authorize</code></td>
+<td>code flow with PKCE (<code>plain</code>, <code>S256</code>). <code>openshift-challenging-client</code> (<code>oc login -u</code>): <code>401</code> with <code>WWW-Authenticate: Basic realm="openshift"</code> when the request has <code>X-CSRF-Token</code>, else <code>401</code> with only a <code>Warning</code>; the browser clients get a login page at <code>/login/kube:admin</code> and a session cookie <code>ssn</code> (5 minutes, the session the authentication operator configures). Codes are single use and expire after 300 s</td>
+<td><a href="https://github.com/openshift/oauth-server/tree/release-4.19">oauth-server</a> <code>osin/authorize.go</code>, <code>passwordchallenger</code>; cluster-authentication-operator <code>payload_config_controller.go</code> (<code>SessionName: "ssn"</code>, <code>SessionMaxAgeSeconds: 5 * 60</code>)</td>
+</tr>
+<tr>
+<td><code>POST /oauth/token</code></td>
+<td><code>{"access_token":"sha256~&lt;43&gt;","expires_in":86400,"scope":"user:full","token_type":"Bearer"}</code>, no refresh token; <code>scope</code> is <code>user:full</code> when the client asked for none. Errors as osin JSON with status 400 (<code>invalid_grant</code>, <code>invalid_request</code>, <code>unauthorized_client</code>, <code>unsupported_grant_type</code>)</td>
+<td><code>osin/access.go</code>, <code>pkg/oauth/handlers/grant.go</code>, <code>pkg/osinserver/defaults.go</code></td>
+</tr>
+<tr>
+<td><code>/oauth/token/request</code>, <code>/oauth/token/display</code></td>
+<td>the "Display Token" pages, with the <code>oc login --token=... --server=...</code> command</td>
+<td><code>openshift-browser-client</code></td>
+</tr>
+<tr>
+<td><code>/logout</code></td>
+<td>ends the login session</td>
+<td></td>
+</tr>
+<tr>
+<td><code>DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/&lt;name&gt;</code></td>
+<td>revokes the token whose object name is <code>sha256~&lt;base64url(SHA-256(token))&gt;</code> (<code>oc logout</code>, the console's logout), for any user the proxy authenticates (a token it minted or a client certificate), as ClusterRoleBinding <code>system:oauth-token-deleters</code> allows every authenticated user; other requests reach MicroShift, which has no such API</td>
+<td><code>pkg/osinserver/registrystorage/storage.go</code>; <a href="https://github.com/openshift/openshift-apiserver/blob/release-4.19/test/testdata/bootstrappolicy/bootstrap_cluster_role_bindings.yaml">openshift-apiserver <code>bootstrappolicy</code></a></td>
+</tr>
+<tr>
+<td><code>GET /apis/user.openshift.io/v1/users/~</code></td>
+<td>the virtual User of a kubeadmin token or client certificate (older <code>oc</code> versions ask for it)</td>
+<td><a href="https://github.com/openshift/oauth-apiserver/blob/release-4.19/pkg/user/apiserver/registry/user/etcd/etcd.go">oauth-apiserver <code>user/.../etcd.go</code></a></td>
+</tr>
+<tr>
+<td>any path starting with <code>/console</code>, any method</td>
+<td><code>302</code> to the console when it runs, else <code>500</code> <code>redirection failed: console URL not found</code></td>
+<td><a href="https://github.com/openshift/kubernetes/blob/release-4.19/openshift-kube-apiserver/openshiftkubeapiserver/patch_handlerchain.go">OpenShift kube-apiserver <code>withConsoleRedirect</code></a></td>
+</tr>
+<tr>
+<td>anything else</td>
+<td>forwarded to MicroShift, streamed both ways; <code>Upgrade</code> requests (exec, attach, cp, port-forward, over WebSocket or SPDY) become a byte tunnel</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>What the API server sees, through MicroShift's request-header authentication (the proxy presents MicroShift's
+aggregator client certificate and sets <code>X-Remote-User</code>, <code>X-Remote-Group</code> and <code>X-Remote-Extra-*</code>; incoming <code>X-Remote-*</code>
+headers are always dropped, <code>Impersonate-*</code> headers pass):</p>
+<table>
+<thead>
+<tr>
+<th>Credential</th>
+<th>User</th>
+<th>Measured with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>token from <code>oc login -u kubeadmin</code></td>
+<td><code>kube:admin</code>, groups <code>system:cluster-admins</code>, <code>system:authenticated</code>, extra <code>scopes.authorization.openshift.io: [user:full]</code></td>
+<td><code>oc whoami</code>, SelfSubjectReview</td>
+</tr>
+<tr>
+<td>admin kubeconfig (client certificate from MicroShift's client CA)</td>
+<td><code>system:admin</code>, <code>system:masters</code></td>
+<td>SelfSubjectReview</td>
+</tr>
+<tr>
+<td>ServiceAccount token, unknown token, no credentials</td>
+<td>forwarded as sent, so MicroShift decides</td>
+<td>SelfSubjectReview</td>
+</tr>
+</tbody>
+</table>
+<p><code>kube:admin</code> follows library-go's bootstrap authenticator, which oauth-server and oauth-apiserver use: the basic-auth
+name is <code>kubeadmin</code> (or <code>kube:admin</code>), the password is checked against <code>kube-system/kubeadmin</code>, passwords under 23
+characters are refused, and the secret is ignored when it is being deleted, absent, or created more than one hour after
+<code>kube-system</code>. Deleting it is how OpenShift removes kubeadmin (<a href="https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/authentication-remove-kubeadmin.adoc"><code>authentication-remove-kubeadmin.adoc</code></a>):
+the next login answers 401, and tokens already issued stop working within 10 seconds, since a token is tied to the
+secret's UID and resource version. floci-az creates the secret once; a recreate on the same volume does not bring a
+deleted kubeadmin back.</p>
+<p><strong>Certificates.</strong> The proxy serves MicroShift's own serving certificates: the localhost one to <code>localhost</code> and clients
+that send no SNI, the external one (which names <code>api.&lt;full domain&gt;</code>, the container name and floci-az's host name when
+it is not <code>localhost</code>) otherwise. <code>oc login --certificate-authority=&lt;file&gt;</code> with the CA of the admin kubeconfig verifies,
+as does <code>--insecure-skip-tls-verify</code>. HTTP/1.1 only. The files are read when the proxy starts; MicroShift's serving
+certificates are valid for one year, and how MicroShift renews them was not checked.</p>
+<p><strong>Where the API URL points</strong>, per Docker mode (<code>P</code> the proxy port, <code>Q</code> MicroShift's published 6443):</p>
+<table>
+<thead>
+<tr>
+<th>floci-az runs</th>
+<th><code>apiserverProfile.url</code></th>
+<th>floci-az reaches MicroShift at</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>on the host, local Docker daemon</td>
+<td><code>https://localhost:P</code></td>
+<td><code>https://localhost:Q</code></td>
+</tr>
+<tr>
+<td>in Docker (<code>hostname</code> or <code>base-url</code> names it)</td>
+<td><code>https://&lt;floci-az host&gt;:P</code>; publish <code>7700-7799</code> on the floci-az container as <code>P:P</code> so host clients can use <code>https://localhost:P</code></td>
+<td><code>https://&lt;cluster container&gt;:6443</code> on the shared network</td>
+</tr>
+<tr>
+<td><code>docker.endpoint-mode=published</code>, daemon on loopback</td>
+<td><code>https://localhost:P</code></td>
+<td><code>https://localhost:Q</code></td>
+</tr>
+<tr>
+<td><code>docker.endpoint-mode=published</code>, remote daemon</td>
+<td><code>https://&lt;floci-az host&gt;:P</code></td>
+<td><code>https://&lt;daemon host&gt;:Q</code></td>
+</tr>
+</tbody>
+</table>
+<p>Only the first and third rows run in tests; the others follow the same rules and are covered by unit tests only.</p>
+<p><strong>Deviations</strong> from a real cluster:</p>
+<ul>
+<li>The OAuth issuer is the API URL the client used, not <code>https://oauth-openshift.apps.&lt;domain&gt;</code>, so <code>oc login</code> needs
+  no DNS.</li>
+<li>Tokens work through the API URL only; MicroShift's own port does not know them.</li>
+<li>kubeadmin is the only identity provider. There are no OAuth API objects (<code>oc get oauthaccesstokens</code>, <code>users</code>,
+  <code>identities</code>, <code>groups</code>), no <code>OAuth/cluster</code>, no token inactivity timeout; login sessions and codes are kept in memory.</li>
+<li><code>oc login</code> prints <code>Using "default" namespace</code> instead of the project list: there is no <code>project.openshift.io</code>.</li>
+<li><code>users/~</code> is answered for kubeadmin tokens and client certificates only; for other credentials it reaches
+  MicroShift, which answers 404.</li>
+<li>The login page is a minimal HTML form, not OpenShift's.</li>
+</ul>
+<hr />
+<h2 id="the-web-console">The web console</h2>
+<p>On ARO, users "Launch the console URL in a browser and sign in using the kubeadmin credentials"
+(<a href="https://learn.microsoft.com/en-us/azure/openshift/connect-cluster">Connect to an ARO cluster</a>). A real-mode cluster runs OKD 4.19's own console, deployed as the
+console-operator deploys it (<a href="https://github.com/openshift/console-operator/tree/release-4.19">openshift/console-operator <code>release-4.19</code></a> <code>manifests/</code> and
+<code>bindata/assets/</code>): namespaces <code>openshift-console</code>, <code>openshift-console-user-settings</code> and <code>openshift-config-managed</code>,
+ServiceAccount, ClusterRole and bindings <code>console</code> and <code>console-auth-delegator</code>, Service <code>console</code> (443 to 8443, serving
+certificate from service-ca), Route <code>console</code> (reencrypt, <code>console-openshift-console.apps.&lt;full domain&gt;</code>, 5 minute
+timeout), Deployment <code>console</code> (probes <code>GET /health</code> on 8443, requests 10m CPU and 100Mi), the OAuth client <code>console</code>
+with its secret, and ConfigMap <code>openshift-config-managed/console-public</code>, so <code>oc whoami --show-console</code> prints the
+console URL and <code>GET /console</code> on the API URL redirects to it. The branding is <code>azure</code>, which ARO sets
+(<a href="https://github.com/Azure/ARO-RP/blob/master/pkg/cluster/consolebranding.go">ARO-RP <code>consolebranding.go</code></a>).</p>
+<p>To use it from a browser, both <code>console-openshift-console.apps.&lt;full domain&gt;</code> and <code>api.&lt;full domain&gt;</code> must resolve to
+the machine floci-az and the cluster's ports are on. ARO's default <code>&lt;domain&gt;.&lt;location&gt;.aroapp.io</code> does not resolve, so
+create the cluster with a domain that does: a <code>clusterProfile.domain</code> with a dot is used as is, as on ARO, and
+<code>*.127.0.0.1.nip.io</code> resolves to <code>127.0.0.1</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ARM</span><span class="s2">/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo?api-version=2025-07-25"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"location":"eastus","properties":{"clusterProfile":{"domain":"demo.127.0.0.1.nip.io","version":"4.19.0"}}}'</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># once Succeeded: open consoleProfile.url, e.g. https://console-openshift-console.apps.demo.127.0.0.1.nip.io:7602/,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># accept the router's and the API's certificates, log in as kubeadmin with the listCredentials password</span>
+</code></pre></div>
+<p>The login page is the OAuth server's on <code>https://api.&lt;full domain&gt;:&lt;proxy port&gt;</code>. Measured on the amd64 runner: the
+console was available about 10 seconds after the cluster was <code>Succeeded</code> (the image, 149 MB compressed, was pulled
+from quay.io by the cluster), and the login as <code>kube:admin</code>, API calls through the console and logout (which revokes
+the token) all worked. The design spike measured a 19 MB working set for the console after one login.</p>
+<p>How it differs from a real cluster:</p>
+<ul>
+<li><strong>The bridge runs off-cluster against floci-az's API proxy</strong>, with <code>--k8s-mode=off-cluster</code> and
+  <code>--k8s-mode-off-cluster-service-account-bearer-token-file</code>, which upstream labels "DEV ONLY": in-cluster mode would
+  send the user's <code>sha256~</code> token to MicroShift's API server, which cannot validate it. The pod resolves
+  <code>api.&lt;full domain&gt;</code> to the address the cluster reaches floci-az at, through <code>hostAliases</code>.</li>
+<li><strong>It does not hold readiness back.</strong> A cluster is <code>Succeeded</code> without waiting for the console; floci-az logs when
+  the console is available, or once when it is not after <code>console.ready-timeout-seconds</code>. Whether real ARO reports
+  <code>Succeeded</code> only once its console is available was not verified.</li>
+<li><strong>amd64 only.</strong> The OKD 4.19 console image and <code>quay.io/openshift/origin-console</code> have no arm64 build, so the
+  console is off by default on an arm64 Docker daemon; set <code>console.image</code> to an arm64 build, or <code>console.enabled=true</code>
+  to try the amd64 image under emulation (not tested).</li>
+<li><strong>Pages that need APIs MicroShift lacks show partial data or errors</strong>: projects (<code>project.openshift.io</code>), cluster
+  operators and settings beyond <code>ClusterVersion</code>, <code>Infrastructure</code> and <code>Ingress</code>, monitoring, dynamic plugins
+  (<code>console.openshift.io</code>). Which pages are affected was not surveyed page by page.</li>
+<li><strong>Without the OAuth server</strong> (<code>oauth.enabled=false</code>), the console has no login page: it runs with
+  <code>--user-auth=disabled</code> and its ServiceAccount's token (also "DEV ONLY" upstream), bound to <code>cluster-admin</code>, so every
+  visitor acts as <code>system:serviceaccount:openshift-console:console</code> (measured: a SelfSubjectReview through the
+  console answers that user).</li>
+</ul>
+<hr />
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Key (<code>floci-az.services.aro.*</code>)</th>
+<th>Default</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td><code>true</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mocked</code></td>
+<td><code>false</code></td>
+<td><code>true</code>: no container, ARM state and a synthetic kubeconfig pointing at <code>https://api.&lt;full domain&gt;:6443</code></td>
+</tr>
+<tr>
+<td><code>image-repository</code></td>
+<td><code>quay.io/minc-org/minc</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>versions</code></td>
+<td><code>4.19=4.19.0-okd-scos.17</code></td>
+<td>comma-separated <code>minor=tag</code>; the tag gets <code>-arm64</code> or <code>-amd64</code> after the Docker daemon's architecture. Only these minors are advertised; any <code>x.y.z</code> of one is accepted and echoed</td>
+</tr>
+<tr>
+<td><code>base-port</code> / <code>max-port</code></td>
+<td><code>7600</code> / <code>7699</code></td>
+<td>host ports for the API server and the router's 80 and 443 (three per cluster)</td>
+</tr>
+<tr>
+<td><code>ready-timeout-seconds</code></td>
+<td><code>900</code></td>
+<td>a cluster still not ready after this ends <code>Failed</code></td>
+</tr>
+<tr>
+<td><code>storage-provisioner-image</code></td>
+<td><code>docker.io/rancher/local-path-provisioner:v0.0.37</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>storage-helper-image</code></td>
+<td><code>docker.io/library/busybox:1.37</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>keep-running-on-shutdown</code></td>
+<td><code>false</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>proxy-base-port</code> / <code>proxy-max-port</code></td>
+<td><code>7700</code> / <code>7799</code></td>
+<td>host ports of the API proxies, one per cluster, bound by floci-az itself</td>
+</tr>
+<tr>
+<td><code>oauth.enabled</code></td>
+<td><code>true</code></td>
+<td><code>false</code>: new clusters get no API proxy and no OAuth server; <code>apiserverProfile.url</code> is MicroShift's published port and <code>oc login</code> fails. Clusters keep what they were created with</td>
+</tr>
+<tr>
+<td><code>console.enabled</code></td>
+<td>unset</td>
+<td>unset: the console runs when the Docker daemon is amd64, and on arm64 only when <code>console.image</code> is changed. Decided when a cluster is created</td>
+</tr>
+<tr>
+<td><code>console.image</code></td>
+<td><code>quay.io/okd/scos-content@sha256:ba8cac19...</code></td>
+<td>OKD 4.19.0-okd-scos.17's console (<code>oc adm release info quay.io/okd/scos-release:4.19.0-okd-scos.17 --image-for=console</code>), pulled by the cluster</td>
+</tr>
+<tr>
+<td><code>console.ready-timeout-seconds</code></td>
+<td><code>600</code></td>
+<td>when floci-az logs that a console is still not available</td>
+</tr>
+<tr>
+<td><code>oauth.access-token-max-age-seconds</code></td>
+<td><code>86400</code></td>
+<td>lifetime of the tokens the OAuth server issues (<a href="https://github.com/openshift/openshift-docs/blob/enterprise-4.19/modules/oauth-configuring-internal-oauth.adoc"><code>oauth-configuring-internal-oauth.adoc</code></a>: "By default, tokens are only valid for 24 hours")</td>
+</tr>
+</tbody>
+</table>
+<h3 id="persistence-and-restart">Persistence and restart</h3>
+<p>With a persistent storage mode (<code>persistent</code>, <code>hybrid</code>, <code>wal</code>), clusters are restored at startup: a surviving container
+is adopted (the cluster stays <code>Succeeded</code>, same kubeconfig); otherwise a new container starts on the surviving data
+volume (same CA, new kubeconfig after it is ready again); otherwise a new cluster starts and the log says its CA
+changed. At shutdown the container and its volumes are removed unless <code>keep-running-on-shutdown</code> is set, as for AKS,
+so without that flag a restart recreates the cluster. In memory mode nothing is restored. <code>DELETE</code> and
+<code>POST /_admin/reset</code> remove the container and both volumes.</p>
+<p>The API proxy comes back on the same port. Issued tokens are stored with the cluster, so they survive a restart of
+floci-az while the cluster's data volume does; a cluster recreated without its volume gets a new <code>kubeadmin</code> secret
+(same password) and loses its tokens. A cluster stored before the API proxy existed keeps its direct API URL and has
+no OAuth server, and the log says so at startup; recreate it to get <code>oc login</code>.</p>
+<hr />
+<h2 id="what-is-not-openshift-here">What is not OpenShift here</h2>
+<ul>
+<li><strong>One node.</strong> Masters and workers are the same MicroShift node; <code>masterProfile</code> and <code>workerProfiles</code> only shape the
+  ARM resource, the node's instance-type label and <code>workerProfilesStatus</code>. There are no MachineSets, no machine API
+  and no scaling.</li>
+<li><strong>OKD, not OCP.</strong> The image is an OKD (CentOS Stream CoreOS) build of MicroShift 4.19; <code>ClusterVersion</code> reports the
+  OKD version, not the <code>4.19.x</code> the ARM resource echoes. There are no cluster upgrades.</li>
+<li><strong>kubeadmin only.</strong> <code>oc login -u kubeadmin</code> works through floci-az's OAuth server (see
+  <a href="#oc-login-and-the-oauth-server"><code>oc login</code></a>); there are no other identity providers and no OAuth API objects.</li>
+<li><strong>Console on amd64, with gaps.</strong> See <a href="#the-web-console">the web console</a>.</li>
+<li><strong>Few OpenShift APIs.</strong> MicroShift serves <code>route.openshift.io</code> and <code>security.openshift.io</code> (Routes and SCCs). The
+  <code>ClusterVersion</code>, <code>Infrastructure</code> and <code>Ingress</code> objects are static. There is no <code>project.openshift.io</code>, no
+  <code>config.openshift.io</code> beyond those three, no <code>operator.openshift.io</code>, no image registry, builds, monitoring or
+  cluster operators. OLM runs, with no catalog.</li>
+<li><strong>Not the ARO network.</strong> kindnet instead of OVN-Kubernetes; private API or ingress visibility, user-defined routing,
+  NSGs and outbound IPs change nothing; <code>networkProfile.loadBalancerProfile.effectiveOutboundIps</code> is not returned.
+  kube-proxy keeps MicroShift's fixed <code>clusterCIDR: 10.42.0.0/16</code> whatever the cluster's <code>podCidr</code>.</li>
+<li><strong>No Azure integration in the cluster.</strong> No Azure cloud provider, no real Azure Disk or Azure Files, no workload
+  identity; the pull secret is ignored.</li>
+</ul>
+<h2 id="not-verified">Not verified</h2>
+<ul>
+<li>The MachineSet names behind <code>workerProfilesStatus</code> follow the installer's <code>&lt;infraID&gt;-worker-&lt;region&gt;&lt;zone&gt;</code> pattern
+  and have not been compared with a live ARO cluster.</li>
+<li>Whether ARO returns <code>Retry-After</code> on every LRO answer: the spec example shows one on PUT, ARO-RP's frontend sets
+  none; floci-az sends <code>Retry-After: 1</code> so clients poll quickly.</li>
+<li><code>ClusterVersion</code> conditions, <code>versionHash</code> and the <code>Infrastructure</code> topology values are modelled on OCP, not read
+  from an ARO cluster.</li>
+<li>Whether a real ARO API server certificate is publicly trusted, which would let <code>oc login</code> work without
+  <code>--certificate-authority</code> or <code>--insecure-skip-tls-verify</code>.</li>
+<li>Which <code>oc</code> release first asks for a SelfSubjectReview before <code>users/~</code> (oc commit <code>a9e0887fbb</code>, 2023, about 4.15);
+  both are served for kubeadmin.</li>
+<li>floci-az in Docker, a remote Docker daemon and Docker Desktop with the API proxy (see the table above).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "search.highlight", "search.suggest", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

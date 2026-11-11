@@ -117,7 +117,7 @@ class AksServerArgsTest {
     }
 
     @Test
-    void adoptingAnUnlabelledServerRecordsTheArgumentsItIsTakenToRunWith() {
+    void adoptingAnUnlabelledServerRecordsTheArgumentsItRunsWith() {
         lenient().when(config.docker()).thenReturn(dockerConfig);
         lenient().when(dockerConfig.resourceNamespace()).thenReturn(Optional.empty());
         lenient().when(config.services()).thenReturn(servicesConfig);
@@ -132,11 +132,14 @@ class AksServerArgsTest {
         AksClusterManager manager = new AksClusterManager(containerBuilder, lifecycleManager, containerDetector,
                 networkResolver, portAllocator, config);
 
-        List<String> args = List.of("server", "--disable-agent");
-        AksClusterManager.ServerStart start = manager.prepareServer(cluster, IMAGE, args, Map.of(), Map.of());
+        List<String> args = List.of("server", "--disable-agent", "--entra");
+        String legacy = AksClusterManager.serverHash(List.of("server", "--disable-agent"), Map.of());
+        AksClusterManager.ServerStart start = manager.prepareServer(cluster, IMAGE, args, Map.of(), Map.of(), legacy);
 
         assertEquals(AksClusterManager.ServerStart.ADOPTED, start);
-        assertEquals(AksClusterManager.serverHash(args, Map.of()), cluster.getServerArgsHash());
+        assertEquals(legacy, cluster.getServerArgsHash());
+        assertEquals(ServerDecision.REPLACE, AksClusterManager.serverDecision(Optional.of(existing), IMAGE,
+                AksClusterManager.serverHash(args, Map.of()), cluster.getServerArgsHash()));
         verify(lifecycleManager, never()).stopAndRemove(anyString(), any());
     }
 }

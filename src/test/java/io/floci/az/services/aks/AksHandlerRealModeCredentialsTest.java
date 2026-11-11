@@ -86,7 +86,7 @@ class AksHandlerRealModeCredentialsTest {
     @DisplayName("listClusterAdminCredential on a Failed cluster is rejected")
     void adminCredentialsOfFailedClusterAreRejected() {
         doThrow(new IllegalStateException("docker unavailable")).when(clusterManager)
-            .prepareServer(any(), any(), any(), any(), any());
+            .prepareServer(any(), any(), any(), any(), any(), any());
         createCluster("failed-cluster", "Failed");
 
         given()

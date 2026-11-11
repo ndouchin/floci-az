@@ -85,18 +85,26 @@ public class AksClusterManager {
      * (absolute path to content) are files k3s reads only when it starts, such as webhook kubeconfigs: they count as
      * arguments. {@code manifests} (file name to content) are dropped into the k3s auto-deploy directory before a new
      * container starts. Sets the container id, host port, image, argument hash and endpoints on {@code cluster}.
+     *
+     * @param legacyHash the hash of the arguments a server created before they were recorded runs with; an unlabelled
+     *                   server adopted for a record without a hash is recorded with it, so a feature the record carries
+     *                   that such a server lacks replaces it at the next change
      */
     public ServerStart prepareServer(ManagedCluster cluster, String image, List<String> args,
-                                     Map<String, String> startupFiles, Map<String, String> manifests) {
+                                     Map<String, String> startupFiles, Map<String, String> manifests,
+                                     String legacyHash) {
         String name = containerName(cluster);
         lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
         Optional<Container> existing = lifecycleManager.findByName(name);
         String hash = serverHash(args, startupFiles);
         ServerDecision decision = serverDecision(existing, image, hash, cluster.getServerArgsHash());
         if (decision == ServerDecision.ADOPT) {
-            adoptServer(cluster, existing.orElseThrow().getId());
+            boolean unlabelled = existing.orElseThrow().getLabels() == null
+                    || !existing.get().getLabels().containsKey(SERVER_ARGS_LABEL);
+            adoptServer(cluster, existing.get().getId());
             cluster.setServerImage(image);
-            cluster.setServerArgsHash(hash);
+            cluster.setServerArgsHash(unlabelled && cluster.getServerArgsHash() == null && legacyHash != null
+                    ? legacyHash : hash);
             return ServerStart.ADOPTED;
         }
         if (existing.isPresent()) {

@@ -57,11 +57,21 @@ final class AksClusterRuntime {
      * name agents join by, plus the Docker daemon's host in published mode. The network ranges come last.
      */
     List<String> serverArgs(ManagedCluster cluster) {
+        return serverArgs(cluster, false);
+    }
+
+    /**
+     * @param legacy the arguments of a server created before arguments were recorded: none of the features added since
+     */
+    List<String> serverArgs(ManagedCluster cluster, boolean legacy) {
         List<String> args = new ArrayList<>(List.of("server", "--disable-agent", "--egress-selector-mode=cluster",
                 "--disable=traefik", "--disable=local-storage", "--tls-san=localhost",
                 "--tls-san=" + manager.containerName(cluster)));
         manager.daemonTlsSan().ifPresent(san -> args.add("--tls-san=" + san));
         args.addAll(AksNetwork.serverArgs(cluster.getNetworkProfile()));
+        if (legacy) {
+            return args;
+        }
         if (cluster.entraEnabled()) {
             args.addAll(List.of(
                     "--kube-apiserver-arg=authentication-token-webhook-config-file=" + AUTHN_CONFIG,
@@ -85,7 +95,14 @@ final class AksClusterRuntime {
      * cluster's API server gets the kubeconfig of floci-az's token webhook.
      */
     Map<String, String> startupFiles(ManagedCluster cluster) {
+        return startupFiles(cluster, false);
+    }
+
+    Map<String, String> startupFiles(ManagedCluster cluster, boolean legacy) {
         Map<String, String> files = new LinkedHashMap<>();
+        if (legacy) {
+            return files;
+        }
         if (cluster.entraEnabled()) {
             files.put(AUTHN_CONFIG, webhookKubeconfig(webhookUrl(cluster, "token-review")));
         }
@@ -102,6 +119,11 @@ final class AksClusterRuntime {
      */
     private static boolean azureRbac(ManagedCluster cluster) {
         return cluster.entraEnabled() && cluster.getAadProfile().azureRbac();
+    }
+
+    /** The hash of the arguments a server created before they were recorded runs with. */
+    String legacyServerHash(ManagedCluster cluster) {
+        return AksClusterManager.serverHash(serverArgs(cluster, true), startupFiles(cluster, true));
     }
 
     String webhookUrl(ManagedCluster cluster, String review) {

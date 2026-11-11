@@ -34,6 +34,8 @@ be verified, the page says so.
   authorization webhook, with AKS's data actions and Forbidden message
 - **Workload Identity**: the OIDC issuer (on by default), service account tokens under its AKS-format URL, the
   upstream mutating webhook add-on, and the token exchange at floci-az's Entra from pods (floci-az TLS required)
+- **LoadBalancer Services**: an Azure-shaped address in `status.loadBalancer`, public from `198.51.100.0/24` or
+  internal on the cluster network, held by an appliance container that forwards to the nodes
 - **Restore**: in a persistent storage mode, clusters come back at startup on their surviving containers or volumes
 - **Mocked mode**: clusters reach `Succeeded` at once with a synthetic kubeconfig; no Docker required
 
@@ -534,6 +536,48 @@ kubectl get configmap floci-az-ca -n kube-system -o json \
 
 ---
 
+## LoadBalancer Services
+
+New clusters run k3s without its servicelb (`load-balancer.mode=emulated`, recorded on the cluster), and floci-az
+plays AKS's cloud controller for Services of type `LoadBalancer` that name no `loadBalancerClass`
+(kubernetes/cloud-provider `wantsLoadBalancer`). Every 3 seconds it adds the
+`service.kubernetes.io/load-balancer-cleanup` finalizer, gives the load balancer an address and an appliance
+container holding it, writes `status.loadBalancer.ingress: [{ip}]`, and reports the service controller's events
+(`EnsuringLoadBalancer`, `EnsuredLoadBalancer`, `SyncLoadBalancerFailed`, `UpdatedLoadBalancer`,
+`UnAvailableLoadBalancer`, `DeletingLoadBalancer`, `DeletedLoadBalancer`).
+
+| Service | Address ([public LB][aks-lb], [internal LB][aks-ilb]) |
+|---|---|
+| default | a public address from `load-balancer.public-cidr` (`198.51.100.0/24`, RFC 5737 TEST-NET-2), unique across every cluster of the emulator |
+| `service.beta.kubernetes.io/azure-load-balancer-internal: "true"` | the address the cluster's Docker network gives the appliance |
+| `service.beta.kubernetes.io/azure-load-balancer-ipv4`, else the deprecated `spec.loadBalancerIP` | that public address when it is in the range and free; otherwise the Service stays `<pending>` with a `SyncLoadBalancerFailed` event |
+
+The appliance is a container from the cluster's own k3s image that DNATs each Service port to the Ready agent nodes'
+NodePorts (only those with a ready endpoint under `externalTrafficPolicy: Local`, never nodes labelled
+`node.kubernetes.io/exclude-from-external-load-balancers`), honours `loadBalancerSourceRanges`, and publishes each
+TCP port on a free host port, listed in the Service annotation `floci.io/load-balancer-host-ports`
+(`TCP/80=127.0.0.1:41234`). Deleting the Service, or changing its type, removes the appliance and then the finalizer;
+deleting the cluster removes every appliance, and the public network goes with the last public load balancer.
+
+| From | Public address | Internal address |
+|---|---|---|
+| A pod of the cluster | yes (kube-proxy answers the status address) | yes |
+| A container on the cluster network | through the appliance's cluster-network address | yes |
+| A container on `floci-az-aks-lb-public` | yes | no |
+| The host | `127.0.0.1:<host port>` from the annotation; on Linux also the address itself | same |
+
+`load-balancer.mode=servicelb` keeps k3s's servicelb (node addresses in the status) and `off` leaves Services
+pending. Clusters created before this mode existed keep servicelb when they are restored.
+
+Not emulated: the public IP and load balancer frontend resources in the node resource group (`azure-pip-name`,
+`azure-dns-label-name` and the other cloud-provider-azure annotations are accepted and ignored), a fixed internal
+address (internal load balancers take the appliance's address, since the cluster network has no configured subnet),
+UDP ports on the host, health probes, client IP preservation through the appliance, `allocateLoadBalancerNodePorts:
+false`, IPv6. The appliance runs privileged, like the cluster's own containers. AKS's load balancer names
+(`kubernetes`, `kubernetes-internal`) are not verified at Tier 1.
+
+---
+
 ## Fields stored and echoed
 
 `securityProfile` (except `workloadIdentity`), `apiServerAccessProfile`, `addonProfiles`,
@@ -578,6 +622,11 @@ floci-az:
       workload-identity:
         entra-mode: microsoft-hostnames
         webhook-image: "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3"
+      load-balancer:
+        mode: emulated
+        provisioning-delay-seconds: 0
+        public-cidr: "198.51.100.0/24"
+        host-ports: dynamic
 ```
 
 | Environment Variable | Default | Description |
@@ -594,6 +643,10 @@ floci-az:
 | `FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY` | `false` | Append `--authority-host <floci-az HTTPS URL>/ --disable-instance-discovery` to the Entra user kubeconfig |
 | `FLOCI_AZ_SERVICES_AKS_ENTRA_WEBHOOK_CACHE_TTL_SECONDS` | `5` | How long API servers cache the token and authorization webhook answers |
 | `FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_ENTRA_MODE` | `microsoft-hostnames` | How Workload Identity pods reach floci-az's Entra: `microsoft-hostnames` or `authority` |
+| `FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_MODE` | `emulated` | Who answers LoadBalancer Services in new clusters: `emulated`, `servicelb` or `off` |
+| `FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_PROVISIONING_DELAY_SECONDS` | `0` | Seconds a new load balancer stays pending |
+| `FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_PUBLIC_CIDR` | `198.51.100.0/24` | Range of public load balancer addresses |
+| `FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_HOST_PORTS` | `dynamic` | `dynamic` publishes each TCP port on a free host port, `none` publishes nothing |
 | `FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_WEBHOOK_IMAGE` | `mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3` | The Workload Identity webhook image |
 
 Images pulled in real mode: the k3s tag of each version used, `rancher/local-path-provisioner:v0.0.37`,
@@ -710,3 +763,5 @@ Checked on 2026-11-10 and 2026-11-11.
 [aks-wi-overview]: https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview
 [wi-yaml]: https://github.com/Azure/azure-workload-identity/blob/v1.6.3/deploy/azure-wi-webhook.yaml
 [cert-rotator]: https://github.com/open-policy-agent/cert-controller/blob/v0.16.0/pkg/rotator/rotator.go
+[aks-lb]: https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard
+[aks-ilb]: https://learn.microsoft.com/en-us/azure/aks/internal-lb

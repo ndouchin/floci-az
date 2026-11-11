@@ -41,7 +41,8 @@ quarkus:
       --initialize-at-run-time=io.floci.az.services.eventgrid.EventGridService,
       --initialize-at-run-time=io.floci.az.services.aro.AroProperties,
       --initialize-at-run-time=io.floci.az.services.aro.AroHandler,
-      --initialize-at-run-time=io.floci.az.services.aro.AroClusterManager
+      --initialize-at-run-time=io.floci.az.services.aro.AroClusterManager,
+      --initialize-at-run-time=io.floci.az.services.aks.AksHandler
 
 floci-az:
   port: 4577

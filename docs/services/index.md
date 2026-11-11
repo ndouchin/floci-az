@@ -20,7 +20,7 @@ Floci-AZ provides emulation for several core Azure services.
 | **Azure Database for PostgreSQL** | ARM path (`Microsoft.DBforPostgreSQL`) + `/{account}-postgres/` | ✅ Flexible servers, databases, firewall rules, configurations; Docker-backed `postgres` containers or mocked |
 | **Azure Database for MySQL** | ARM path (`Microsoft.DBforMySQL`) + `/{account}-mysql/` | ✅ Flexible servers, databases, firewall rules, configurations; Docker-backed `mysql` containers or mocked |
 | **Azure Database for MariaDB** | ARM path (`Microsoft.DBforMariaDB`) + `/{account}-mariadb/` | ✅ Servers (single-server model), databases, firewall rules, configurations; Docker-backed `mariadb` containers or mocked |
-| **Azure Kubernetes Service** | ARM path (`Microsoft.ContainerService`) | ✅ Clusters, agent pools, credentials; real k3s containers or mocked |
+| **Azure Kubernetes Service** | ARM path (`Microsoft.ContainerService`) | ✅ Clusters, agent pools, credentials, Entra ID and Azure RBAC, Workload Identity, LoadBalancer Services; real k3s containers or mocked |
 | **Azure Red Hat OpenShift** | ARM path (`Microsoft.RedHatOpenShift`) | ✅ [Clusters](aro.md) behind long-running operations, kubeadmin and admin kubeconfig credentials, installable versions; one single-node MicroShift (OKD) container per cluster or mocked |
 | **Azure Container Apps** | ARM path (`Microsoft.App`) + FQDN ingress | ✅ Managed environments, apps, revisions, ingress, secrets, min/max replicas; Docker-backed or mocked |
 | **API Management** | ARM path (`Microsoft.ApiManagement`) + `/{account}-apim/` | ✅ APIs, operations, products, subscriptions, named values, backends, OpenAPI import; gateway routing + policy subset |

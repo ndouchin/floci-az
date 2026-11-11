@@ -20,7 +20,10 @@ enum AksLoadBalancerMode {
     }
 
     static AksLoadBalancerMode parse(String value) {
-        String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (value == null || value.isBlank()) {
+            return EMULATED;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
         for (AksLoadBalancerMode mode : values()) {
             if (mode.name().equals(normalized)) {
                 return mode;

@@ -411,6 +411,15 @@ public class AksClusterManager {
         return result.output();
     }
 
+    /** Runs {@code kubectl create -f -} in the server with {@code manifest}, passed through the environment. */
+    public void kubectlCreate(ManagedCluster cluster, String manifest) {
+        ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                List.of("FLOCI_MANIFEST=" + manifest), "sh", "-c", "printf %s \"$FLOCI_MANIFEST\" | kubectl create -f -");
+        if (result.exitCode() != 0) {
+            throw new IllegalStateException("kubectl create failed: " + result.output().trim());
+        }
+    }
+
     // ── Agents ────────────────────────────────────────────────────────────────
 
     /** What an agent container needs that the cluster record does not hold. */
@@ -548,6 +557,12 @@ public class AksClusterManager {
         for (String nodeName : nodeNames(cluster)) {
             lifecycleManager.findByName(agentContainerName(cluster, nodeName))
                     .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+        }
+        for (AksModels.LoadBalancerRecord record : cluster.loadBalancers()) {
+            if (record.getApplianceName() != null) {
+                lifecycleManager.findByName(record.getApplianceName())
+                        .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+            }
         }
         if (cluster.getContainerId() != null) {
             lifecycleManager.stopAndRemove(cluster.getContainerId(), null);

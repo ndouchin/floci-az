@@ -37,16 +37,23 @@ import org.jboss.logging.Logger;
 
 import java.io.InputStream;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -112,12 +119,16 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     private final ArmResourceStore<ManagedCluster> store;
     private final AksReconciler reconciler;
+    private final AksLoadBalancerAppliances appliances;
+    private final AksLoadBalancerController loadBalancers;
+    private ScheduledExecutorService loadBalancerScheduler;
+    private volatile boolean publicLoadBalancersSeen;
 
     public AksHandler(EmulatorConfig config,
                       AksClusterManager clusterManager,
                       StorageFactory storageFactory,
                       CloudDefaults defaults) {
-        this(config, clusterManager, storageFactory, defaults, null);
+        this(config, clusterManager, storageFactory, defaults, null, null);
     }
 
     @Inject
@@ -125,8 +136,10 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                       AksClusterManager clusterManager,
                       StorageFactory storageFactory,
                       CloudDefaults defaults,
-                      DockerHostResolver hostResolver) {
+                      DockerHostResolver hostResolver,
+                      AksLoadBalancerAppliances appliances) {
         this.config = config;
+        this.appliances = appliances;
         this.defaults = defaults;
         this.clusterManager = clusterManager;
         this.versions = new AksVersions(config.services().aks().imageRepository(),
@@ -146,6 +159,10 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                                         != EmulatorConfig.AksEntraMode.AUTHORITY,
                                 config.services().aks().workloadIdentity().webhookImage())),
                 Duration.ofSeconds(Math.max(1, config.services().aks().readyTimeoutSeconds())));
+        this.loadBalancers = appliances == null ? null : new AksLoadBalancerController(
+                new AksLoadBalancerKube(clusterManager, Clock.systemUTC()), appliances, new LoadBalancerRecords(),
+                Clock.systemUTC(), () -> config.services().aks().loadBalancer().provisioningDelaySeconds(),
+                config.services().aks().loadBalancer().publicCidr());
     }
 
     /** The host cluster containers reach floci-az by, resolved once. */
@@ -195,6 +212,84 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     void onStart(@Observes StartupEvent event) {
         restorePersistedClusters();
+        startLoadBalancerController();
+    }
+
+    /** Every 3 s, as a cloud controller's resync, the load balancers of each running cluster in the emulated mode. */
+    private void startLoadBalancerController() {
+        if (config.services().aks().mocked() || loadBalancers == null) {
+            return;
+        }
+        AksLoadBalancerMode.parse(config.services().aks().loadBalancer().mode());
+        loadBalancerScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "aks-load-balancers");
+            thread.setDaemon(true);
+            return thread;
+        });
+        loadBalancerScheduler.scheduleWithFixedDelay(this::reconcileLoadBalancers, 3, 3, TimeUnit.SECONDS);
+    }
+
+    void reconcileLoadBalancers() {
+        boolean publicSeen = false;
+        for (ManagedCluster cluster : scanAll()) {
+            publicSeen |= cluster.loadBalancers().stream().anyMatch(record -> !record.isInternal());
+            if (AksLoadBalancerMode.of(cluster) != AksLoadBalancerMode.EMULATED
+                    || !"Succeeded".equals(cluster.getProvisioningState())
+                    || "Stopped".equals(cluster.getPowerState()) || cluster.getContainerId() == null) {
+                continue;
+            }
+            try {
+                Set<String> agents = new HashSet<>();
+                cluster.pools().forEach(pool -> pool.nodes().forEach(node -> agents.add(node.getName())));
+                loadBalancers.reconcile(cluster, agents);
+            } catch (RuntimeException e) {
+                LOG.debugv(e, "Load balancers of AKS cluster {0} not reconciled", cluster.getName());
+            }
+        }
+        if (publicLoadBalancersSeen && !publicSeen) {
+            appliances.removePublicNetworkIfUnused(scanAll());
+        }
+        publicLoadBalancersSeen = publicSeen;
+    }
+
+    /** The load balancer records, kept on each cluster's record. */
+    private final class LoadBalancerRecords implements AksLoadBalancerController.Records {
+
+        @Override
+        public List<AksModels.LoadBalancerRecord> list(ManagedCluster cluster) {
+            return getCluster(clusterId(cluster)).map(current -> List.copyOf(current.loadBalancers()))
+                    .orElse(List.of());
+        }
+
+        @Override
+        public void save(ManagedCluster cluster, AksModels.LoadBalancerRecord record) {
+            store.update(clusterId(cluster), current -> {
+                current.loadBalancers().removeIf(r -> r.getServiceUid().equals(record.getServiceUid()));
+                current.loadBalancers().add(record);
+                return current;
+            });
+        }
+
+        @Override
+        public void release(ManagedCluster cluster, String serviceUid) {
+            store.update(clusterId(cluster), current -> {
+                current.loadBalancers().removeIf(r -> r.getServiceUid().equals(serviceUid));
+                return current;
+            });
+        }
+
+        @Override
+        public Collection<String> publicAddresses() {
+            List<String> addresses = new ArrayList<>();
+            scanAll().forEach(cluster -> cluster.loadBalancers().stream()
+                    .filter(record -> !record.isInternal() && record.getAddress() != null)
+                    .forEach(record -> addresses.add(record.getAddress())));
+            return addresses;
+        }
+
+        private ArmResourceId clusterId(ManagedCluster cluster) {
+            return AksHandler.clusterId(cluster.getSubscriptionId(), cluster.getResourceGroup(), cluster.getName());
+        }
     }
 
     void restorePersistedClusters() {
@@ -232,6 +327,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     @PreDestroy
     public void shutdown() {
         reconciler.shutdown();
+        if (loadBalancerScheduler != null) {
+            loadBalancerScheduler.shutdownNow();
+        }
         if (!config.services().aks().mocked()) {
             scanAll().forEach(cluster -> {
                 try {
@@ -410,6 +508,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         cluster.setCreatedAt(Instant.now());
         cluster.setPowerState("Running");
         cluster.setClusterToken(randomToken());
+        cluster.setLoadBalancerMode(AksLoadBalancerMode.parse(config.services().aks().loadBalancer().mode()).value());
         return cluster;
     }
 

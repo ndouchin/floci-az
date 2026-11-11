@@ -27,6 +27,7 @@ import java.security.Signature;
 import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -107,10 +108,17 @@ class AksWorkloadIdentityDockerTest {
         return KubeconfigClient.fromBase64(adminKubeconfig);
     }
 
-    /** Runs {@code script} in a pod of {@code kube-system} that mounts floci-az's CA, and returns its log. */
-    private String runPod(String name, String script, String serviceAccount, String namespace) throws Exception {
+    /**
+     * Runs {@code script} in a pod that mounts floci-az's CA from the ConfigMap {@code floci-az-ca} of its namespace,
+     * labelled for Workload Identity when {@code labelled}, and returns its log.
+     */
+    private String runPod(String name, String script, String serviceAccount, String namespace, boolean labelled)
+            throws Exception {
+        Map<String, Object> metadata = labelled
+                ? Map.of("name", name, "labels", Map.of("azure.workload.identity/use", "true"))
+                : Map.of("name", name);
         String pod = MAPPER.writeValueAsString(Map.of("apiVersion", "v1", "kind", "Pod",
-                "metadata", Map.of("name", name, "labels", Map.of("azure.workload.identity/use", "true")),
+                "metadata", metadata,
                 "spec", Map.of("restartPolicy", "Never", "serviceAccountName", serviceAccount,
                         "containers", List.of(Map.of("name", "probe", "image", CURL_IMAGE,
                                 "command", List.of("sh", "-c", script),
@@ -235,8 +243,76 @@ class AksWorkloadIdentityDockerTest {
         String log = runPod("entra-probe", "for i in $(seq 1 60); do curl -sf --cacert /ca/ca.crt "
                 + "https://login.microsoftonline.com/" + TENANT + "/v2.0/.well-known/openid-configuration "
                 + "&& echo && curl -sf --cacert /ca/ca.crt " + issuer + ".well-known/openid-configuration && exit 0; "
-                + "sleep 2; done; exit 1", "default", "kube-system");
+                + "sleep 2; done; exit 1", "default", "kube-system", false);
         assertTrue(log.contains("\"issuer\":\"https://login.microsoftonline.com/" + TENANT + "/v2.0\""), log);
         assertTrue(log.contains("\"issuer\":\"" + issuer + "\""), log);
+    }
+
+    private static final String CLIENT_ID = "aaaaaaaa-0000-4000-8000-0000000000c1";
+
+    private static String podJson(String name, boolean labelled) throws Exception {
+        Map<String, Object> metadata = labelled
+                ? Map.of("name", name, "labels", Map.of("azure.workload.identity/use", "true"))
+                : Map.of("name", name);
+        return MAPPER.writeValueAsString(Map.of("apiVersion", "v1", "kind", "Pod", "metadata", metadata,
+                "spec", Map.of("serviceAccountName", "app", "containers", List.of(Map.of("name", "app",
+                        "image", CURL_IMAGE, "command", List.of("sleep", "3600"))))));
+    }
+
+    private static Map<String, String> variables(JsonNode container) {
+        Map<String, String> variables = new HashMap<>();
+        container.path("env").forEach(variable -> variables.put(variable.path("name").asText(),
+                variable.path("value").asText()));
+        return variables;
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("the upstream webhook is Ready and injects the Workload Identity variables and token volume into"
+            + " labelled pods only")
+    void theWebhookMutatesLabelledPods() throws Exception {
+        long start = System.nanoTime();
+        AksTestPolling.until(Duration.ofMinutes(2), () -> {
+            try {
+                return admin().get("/apis/apps/v1/namespaces/kube-system/deployments/"
+                        + "azure-wi-webhook-controller-manager").path("status").path("readyReplicas").asInt() > 0;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+        long readySeconds = Duration.ofNanos(System.nanoTime() - start).toSeconds();
+        assertEquals(201, admin().send("POST", "/api/v1/namespaces", "{\"apiVersion\": \"v1\", \"kind\": "
+                + "\"Namespace\", \"metadata\": {\"name\": \"wi\"}}"));
+        assertEquals(201, admin().send("POST", "/api/v1/namespaces/wi/serviceaccounts", MAPPER.writeValueAsString(
+                Map.of("apiVersion", "v1", "kind", "ServiceAccount", "metadata", Map.of("name", "app",
+                        "annotations", Map.of("azure.workload.identity/client-id", CLIENT_ID))))));
+        AksTestPolling.until(Duration.ofSeconds(60), () -> {
+            try {
+                return admin().send("POST", "/api/v1/namespaces/wi/pods", podJson("labelled", true)) == 201;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+        JsonNode labelled = admin().get("/api/v1/namespaces/wi/pods/labelled").path("spec");
+        Map<String, String> injected = variables(labelled.path("containers").path(0));
+        assertEquals(CLIENT_ID, injected.get("AZURE_CLIENT_ID"), labelled.toString());
+        assertEquals(TENANT, injected.get("AZURE_TENANT_ID"));
+        assertEquals("https://login.microsoftonline.com/", injected.get("AZURE_AUTHORITY_HOST"));
+        assertTrue(injected.get("AZURE_FEDERATED_TOKEN_FILE")
+                .matches("/var/run/secrets/azure/wi/[0-9a-f]+/token/azure-identity-token"), injected.toString());
+        boolean projected = false;
+        for (JsonNode volume : labelled.path("volumes")) {
+            for (JsonNode source : volume.path("projected").path("sources")) {
+                if ("api://AzureADTokenExchange".equals(source.path("serviceAccountToken").path("audience").asText())) {
+                    projected = true;
+                }
+            }
+        }
+        assertTrue(projected, labelled.path("volumes").toString());
+        assertTrue(readySeconds <= 30, "the webhook took " + readySeconds + " s after the cluster was ready");
+
+        assertEquals(201, admin().send("POST", "/api/v1/namespaces/wi/pods", podJson("plain", false)));
+        JsonNode plain = admin().get("/api/v1/namespaces/wi/pods/plain").path("spec");
+        assertTrue(variables(plain.path("containers").path(0)).isEmpty(), plain.toString());
     }
 }

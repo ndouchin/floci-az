@@ -3,6 +3,7 @@ package io.floci.az.services.aks;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +43,20 @@ final class AksWorkloadIdentity {
             throw new AksHandler.AksRequestException(400, "BadRequest",
                     "Enabling workload identity requires enabling OIDC issuer.");
         }
+        ensureWebhookCertificates(cluster);
+    }
+
+    /** Generates the webhook's certificates the first time Workload Identity is on. */
+    static void ensureWebhookCertificates(ManagedCluster cluster) {
+        if (cluster.workloadIdentityEnabled() && cluster.getWorkloadIdentityWebhookCertificates() == null) {
+            cluster.setWorkloadIdentityWebhookCertificates(AksWorkloadIdentityWebhook.certificates());
+        }
+    }
+
+    /** The tenant of the cluster's issuer URL ({@code https://{region}.oic.prod-aks.azure.com/{tenant}/{uuid}/}). */
+    static String issuerTenant(ManagedCluster cluster) {
+        String[] segments = URI.create(cluster.getOidcIssuerUrl()).getPath().split("/");
+        return segments.length > 1 ? segments[1] : "";
     }
 
     /** Turns the issuer on, generating its URL the first time. */
@@ -103,6 +118,7 @@ final class AksWorkloadIdentity {
             echoed.put("securityProfile", rest);
             changed = true;
         }
+        ensureWebhookCertificates(cluster);
         return changed;
     }
 }

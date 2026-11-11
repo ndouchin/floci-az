@@ -353,6 +353,22 @@ public class AksClusterManager {
     }
 
     /**
+     * Removes the Workload Identity add-on from a running server: its manifest, so k3s stops applying it, and its
+     * objects, found by the add-on's system label.
+     */
+    public void removeWorkloadIdentityAddon(ManagedCluster cluster) {
+        lifecycleManager.execInContainer(cluster.getContainerId(), "rm", "-f",
+                MANIFESTS_DIR + "/" + AksWorkloadIdentityWebhook.MANIFEST);
+        String selector = AksWorkloadIdentityWebhook.SYSTEM_LABEL + "=true";
+        kubectl(cluster, "delete", "mutatingwebhookconfiguration,clusterrole,clusterrolebinding", "-l", selector,
+                "--ignore-not-found");
+        kubectl(cluster, "-n", "kube-system", "delete",
+                "deployment,service,secret,configmap,serviceaccount,role,rolebinding,poddisruptionbudget", "-l",
+                selector, "--ignore-not-found");
+        LOG.infov("AKS cluster {0}: removed the Workload Identity add-on", cluster.getName());
+    }
+
+    /**
      * The IPv4 address {@code host} resolves to inside the cluster's server container: its {@code /etc/hosts} first
      * (the {@code host-gateway} entry on Linux), then DNS (Docker Desktop's {@code host.docker.internal}).
      */

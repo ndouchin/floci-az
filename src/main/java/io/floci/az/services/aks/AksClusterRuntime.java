@@ -202,8 +202,19 @@ final class AksClusterRuntime {
         if (cluster.workloadIdentityEnabled()) {
             manifests.putAll(AksWorkloadIdentityNetwork.manifests(cluster, options.flociAddress().apply(cluster),
                     options.flociPort(), options.caPem().get(), options.microsoftHostnames()));
+            if (cluster.getWorkloadIdentityWebhookCertificates() != null) {
+                manifests.put(AksWorkloadIdentityWebhook.MANIFEST, AksWorkloadIdentityWebhook.manifest(
+                        options.webhookImage(), AksWorkloadIdentity.issuerTenant(cluster),
+                        cluster.getWorkloadIdentityWebhookCertificates(),
+                        options.microsoftHostnames() ? null : "https://" + AksWorkloadIdentityNetwork.SERVICE_FQDN + "/"));
+            }
         }
         return manifests;
+    }
+
+    /** Whether the cluster still runs the Workload Identity add-on after Workload Identity was turned off. */
+    static boolean workloadIdentityAddonToRemove(ManagedCluster cluster) {
+        return !cluster.workloadIdentityEnabled() && cluster.getWorkloadIdentityWebhookCertificates() != null;
     }
 
     /**

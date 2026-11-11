@@ -41,6 +41,8 @@ public class AksModels {
         private String serviceAccountJwks;
         /** {@code securityProfile.workloadIdentity.enabled}. */
         private Boolean workloadIdentityEnabled;
+        /** The Workload Identity webhook's CA and serving certificate, generated once; null when never enabled. */
+        private WebhookCertificates workloadIdentityWebhookCertificates;
         private NetworkProfile networkProfile;
         /** Request objects the emulator stores and echoes without acting on them (aadProfile, oidcIssuerProfile...). */
         private Map<String, Object> echoedProperties;
@@ -127,6 +129,14 @@ public class AksModels {
         public Boolean getWorkloadIdentityEnabled() { return workloadIdentityEnabled; }
         public void setWorkloadIdentityEnabled(Boolean workloadIdentityEnabled) {
             this.workloadIdentityEnabled = workloadIdentityEnabled;
+        }
+
+        public WebhookCertificates getWorkloadIdentityWebhookCertificates() {
+            return workloadIdentityWebhookCertificates;
+        }
+
+        public void setWorkloadIdentityWebhookCertificates(WebhookCertificates certificates) {
+            this.workloadIdentityWebhookCertificates = certificates;
         }
 
         public boolean oidcIssuerEnabled() {
@@ -223,6 +233,11 @@ public class AksModels {
                 "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
                 subscriptionId, resourceGroup, name);
         }
+    }
+
+    /** PEM CA certificate and key and serving certificate and key of the Workload Identity webhook. */
+    @RegisterForReflection
+    public record WebhookCertificates(String caCert, String caKey, String tlsCert, String tlsKey) {
     }
 
     /**

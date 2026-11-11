@@ -77,7 +77,7 @@ class LocationNormalizeTest {
                 {
                   "location": "East US",
                   "properties": {
-                    "kubernetesVersion": "1.29",
+                    "kubernetesVersion": "1.36",
                     "dnsPrefix": "locaks",
                     "agentPoolProfiles": [{"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2",
                                            "osType": "Linux", "mode": "System"}]

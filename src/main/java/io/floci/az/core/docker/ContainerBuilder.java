@@ -115,6 +115,9 @@ public class ContainerBuilder {
         private List<String> entrypoint;
         private String workingDir;
         private Long memoryBytes;
+        private Long nanoCpus;
+        private String hostname;
+        private boolean joinNetworkAtCreate;
         private final Map<Integer, Integer> portBindings = new HashMap<>();
         private final List<Integer> exposedPorts = new ArrayList<>();
         private String networkMode;
@@ -212,6 +215,22 @@ public class ContainerBuilder {
         }
 
         /**
+         * Sets the CPU limit in CPUs (Docker {@code --cpus}); fractions are allowed.
+         */
+        public Builder withCpus(double cpus) {
+            this.nanoCpus = Math.round(cpus * 1_000_000_000d);
+            return this;
+        }
+
+        /**
+         * Sets the hostname inside the container (Docker {@code --hostname}).
+         */
+        public Builder withHostname(String hostname) {
+            this.hostname = hostname;
+            return this;
+        }
+
+        /**
          * Adds a port binding from container port to a specific host port.
          */
         public Builder withPortBinding(int containerPort, int hostPort) {
@@ -257,6 +276,18 @@ public class ContainerBuilder {
                             ? currentContainerNetworkResolver.resolveNetworkName()
                             : Optional.empty());
             configuredNetwork.ifPresent(n -> this.networkMode = n);
+            return this;
+        }
+
+        /**
+         * Makes {@code network} the container's primary network: it is joined when the container is created,
+         * port bindings or not, so it carries the default route and the address the container's processes
+         * advertise. Without this, a container with port bindings starts on the default bridge and joins its
+         * network after start.
+         */
+        public Builder withPrimaryNetwork(String network) {
+            this.networkMode = network;
+            this.joinNetworkAtCreate = true;
             return this;
         }
 
@@ -438,7 +469,10 @@ public class ContainerBuilder {
                     List.copyOf(dnsServers),
                     workingDir,
                     user,
-                    List.copyOf(groupAdd)
+                    List.copyOf(groupAdd),
+                    hostname,
+                    nanoCpus,
+                    joinNetworkAtCreate
             );
         }
     }

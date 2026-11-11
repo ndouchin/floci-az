@@ -7,4 +7,9 @@
 
 files: []
 
-patterns: []
+patterns:
+  - regex: 'kubernetes\.azure\.com[/"]'
+    reason: the AKS node label prefix (kubernetes.azure.com/agentpool, /mode, /accelerator...) is a
+      Kubernetes label domain AKS uses in every Azure cloud, not a host
+  - regex: '"(disk|file)\.csi\.azure\.com"'
+    reason: the Azure Disk and Azure Files CSI driver names are the same in every Azure cloud, not hosts

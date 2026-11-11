@@ -66,7 +66,7 @@ class AksHandlerTest {
                 {
                   "location": "eastus",
                   "properties": {
-                    "kubernetesVersion": "1.29",
+                    "kubernetesVersion": "1.36",
                     "dnsPrefix": "my-aks-dns",
                     "agentPoolProfiles": [
                       {"name": "nodepool1", "count": 2, "vmSize": "Standard_DS2_v2",
@@ -81,7 +81,7 @@ class AksHandlerTest {
             .body("type", equalTo("Microsoft.ContainerService/managedClusters"))
             .body("location", equalTo("eastus"))
             .body("properties.provisioningState", equalTo("Succeeded"))
-            .body("properties.kubernetesVersion", equalTo("1.29"))
+            .body("properties.kubernetesVersion", equalTo("1.36"))
             .body("properties.dnsPrefix", equalTo("my-aks-dns"))
             .body("properties.agentPoolProfiles", hasSize(1))
             .body("properties.agentPoolProfiles[0].name", equalTo("nodepool1"))
@@ -96,7 +96,7 @@ class AksHandlerTest {
     void getClusterAfterCreate() {
         given()
             .contentType("application/json")
-            .body("{\"location\":\"westus\",\"properties\":{\"kubernetesVersion\":\"1.30\"}}")
+            .body("{\"location\":\"westus\",\"properties\":{\"kubernetesVersion\":\"1.35\"}}")
             .put(BASE + "/managedClusters/get-test?api-version=2024-04-01")
             .then().statusCode(201);
 
@@ -105,7 +105,7 @@ class AksHandlerTest {
             .then().statusCode(200)
             .body("name", equalTo("get-test"))
             .body("location", equalTo("westus"))
-            .body("properties.kubernetesVersion", equalTo("1.30"))
+            .body("properties.kubernetesVersion", equalTo("1.35"))
             .body("properties.provisioningState", equalTo("Succeeded"));
     }
 
@@ -330,7 +330,7 @@ class AksHandlerTest {
                 {
                   "location": "eastus",
                   "properties": {
-                    "kubernetesVersion": "1.29",
+                    "kubernetesVersion": "1.36",
                     "dnsPrefix": "idx-aks-dns",
                     "agentPoolProfiles": [
                       {"name": "nodepool1", "count": 1, "vmSize": "Standard_DS2_v2",

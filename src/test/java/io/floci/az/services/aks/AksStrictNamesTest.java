@@ -45,7 +45,7 @@ class AksStrictNamesTest {
         given().contentType("application/json").body(POOL).when().put(BASE + "poolhost/agentPools/Pool" + API)
             .then().statusCode(400).body("error.code", equalTo("InvalidResourceName"));
         given().contentType("application/json").body(POOL).when().put(BASE + "poolhost/agentPools/pool2" + API)
-            .then().statusCode(200);
+            .then().statusCode(201);
     }
 
     @Test

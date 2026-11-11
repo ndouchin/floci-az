@@ -1,244 +1,456 @@
 package io.floci.az.services.aks;
 
-import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.async.ResultCallback;
-import com.github.dockerjava.api.command.ExecCreateCmdResponse;
-import com.github.dockerjava.api.model.Frame;
+import com.github.dockerjava.api.model.Container;
 import io.floci.az.config.EmulatorConfig;
 import io.floci.az.core.docker.ContainerBuilder;
 import io.floci.az.core.docker.ContainerDetector;
 import io.floci.az.core.docker.ContainerLifecycleManager;
 import io.floci.az.core.docker.ContainerSpec;
 import io.floci.az.core.docker.ContainerStorageHelper;
+import io.floci.az.core.docker.CurrentContainerNetworkResolver;
 import io.floci.az.core.docker.PortAllocator;
+import io.floci.az.services.aks.AksModels.AgentNode;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Manages the Docker lifecycle of k3s containers backing AKS clusters.
- * Not used when {@code floci-az.services.aks.mocked=true}.
+ * Manages the Docker side of AKS clusters: a per-cluster network, the k3s server container that plays the managed
+ * control plane, and one k3s agent container per agent pool node. Not used when
+ * {@code floci-az.services.aks.mocked=true}.
  */
 @ApplicationScoped
 public class AksClusterManager {
 
     private static final Logger LOG = Logger.getLogger(AksClusterManager.class);
-    private static final int K3S_API_SERVER_PORT = 6443;
+    static final int K3S_API_SERVER_PORT = 6443;
+    static final String K3S_DATA_DIR = "/var/lib/rancher/k3s";
+    static final String MANIFESTS_DIR = K3S_DATA_DIR + "/server/manifests";
+    static final String STORAGE_DIR = "/var/lib/floci-aks-storage";
+    static final String ROLE_LABEL = "io.floci.aks.role";
+    static final String NODE_LABEL = "io.floci.aks.node";
+
+    /** How a server container came to run, which tells whether the cluster kept its CA. */
+    enum ServerStart { ADOPTED, RECREATED_ON_VOLUME, CREATED_FRESH }
 
     private final ContainerBuilder containerBuilder;
     private final ContainerLifecycleManager lifecycleManager;
     private final ContainerDetector containerDetector;
+    private final CurrentContainerNetworkResolver networkResolver;
     private final PortAllocator portAllocator;
     private final EmulatorConfig config;
 
-    // Host port each running container was given by the allocator, keyed by container id, so it
-    // goes back to the pool when the container is removed. Without it the range drains over the
-    // process lifetime.
+    // Host port each running server container was given by the allocator, keyed by container id, so it goes back
+    // to the pool when the container is removed. Without it the range drains over the process lifetime.
     private final Map<String, Integer> hostPorts = new ConcurrentHashMap<>();
 
     @Inject
     public AksClusterManager(ContainerBuilder containerBuilder,
-                              ContainerLifecycleManager lifecycleManager,
-                              ContainerDetector containerDetector,
-                              PortAllocator portAllocator,
-                              EmulatorConfig config) {
+                             ContainerLifecycleManager lifecycleManager,
+                             ContainerDetector containerDetector,
+                             CurrentContainerNetworkResolver networkResolver,
+                             PortAllocator portAllocator,
+                             EmulatorConfig config) {
         this.containerBuilder = containerBuilder;
         this.lifecycleManager = lifecycleManager;
         this.containerDetector = containerDetector;
+        this.networkResolver = networkResolver;
         this.portAllocator = portAllocator;
         this.config = config;
     }
 
+    // ── Server ────────────────────────────────────────────────────────────────
+
     /**
-     * Starts a k3s container for the given cluster. Sets containerId and endpoint on the cluster.
-     * Status remains "Creating" until {@link #isReady} returns true and {@link #finalizeCluster} is called.
+     * Makes the cluster's k3s server run {@code image} with {@code args}: adopts a surviving container created from
+     * that image, otherwise replaces it on the same data volume (an upgrade or a lost container keeps the cluster's
+     * state and CA), otherwise creates it on a fresh volume. {@code manifests} (file name to content) are dropped
+     * into the k3s auto-deploy directory before a new container starts. Sets the container id, host port, image and
+     * endpoints on {@code cluster}.
      */
-    public void startCluster(ManagedCluster cluster) {
-        String image = config.services().aks().defaultImage();
-        String containerName = containerName(cluster);
-
-        LOG.infov("Starting k3s container for AKS cluster: {0} using image {1}", cluster.getName(), image);
-
+    public ServerStart prepareServer(ManagedCluster cluster, String image, List<String> args,
+                                     Map<String, String> manifests) {
+        String name = containerName(cluster);
+        lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
+        Optional<Container> existing = lifecycleManager.findByName(name);
+        if (existing.isPresent() && image.equals(existing.get().getImage())) {
+            adoptServer(cluster, existing.get().getId());
+            cluster.setServerImage(image);
+            return ServerStart.ADOPTED;
+        }
+        if (existing.isPresent()) {
+            LOG.infov("AKS cluster {0}: replacing k3s server {1} with image {2} on the same data volume",
+                    cluster.getName(), existing.get().getImage(), image);
+            lifecycleManager.stopAndRemove(existing.get().getId(), null);
+        }
         releaseHostPort(cluster.getContainerId());
-        int hostPort = portAllocator.allocate(
-                config.services().aks().apiServerBasePort(),
-                config.services().aks().apiServerMaxPort());
+        boolean volumeExisted = lifecycleManager.volumeExists(name);
+        createServer(cluster, image, args, manifests);
+        cluster.setServerImage(image);
+        return volumeExisted ? ServerStart.RECREATED_ON_VOLUME : ServerStart.CREATED_FRESH;
+    }
 
-        // Named volume for k3s data — prevents macOS APFS chmod(EINVAL) that crashes kine.
-        // Created explicitly (not implicitly by the mount) so it carries the emulator labels.
-        String volumeName = containerName;
+    private void createServer(ManagedCluster cluster, String image, List<String> args, Map<String, String> manifests) {
+        String containerName = containerName(cluster);
+        LOG.infov("Starting k3s server for AKS cluster {0} using image {1}", cluster.getName(), image);
+        // Pulled before the port is reserved, so a slow pull does not hold the reservation.
+        lifecycleManager.ensureImageAvailable(image);
+        int hostPort = claimHostPort(cluster.getHostPort());
         boolean volumeCreatedByThisStart = false;
-        ContainerLifecycleManager.ContainerInfo info;
+        String containerId = null;
         try {
-            // Everything after the allocation runs inside this block, so a failure in the
-            // stale-container cleanup or the volume setup also gives the port back.
             lifecycleManager.removeIfExists(containerName);
-            volumeCreatedByThisStart = !lifecycleManager.volumeExists(volumeName);
-            lifecycleManager.ensureVolume(volumeName);
+            volumeCreatedByThisStart = !lifecycleManager.volumeExists(containerName);
+            lifecycleManager.ensureVolume(containerName);
             ContainerSpec spec = containerBuilder.newContainer(image)
                     .withName(containerName)
-                    .withLabels(ContainerStorageHelper.resourceIdentityLabels("aks", cluster.getName(),
-                            cluster.getSubscriptionId(), cluster.getResourceGroup(), cluster.getLocation()))
-                    .withCmd(k3sServerArgs())
+                    .withLabels(identityLabels(cluster))
+                    .withLabel(ROLE_LABEL, "server")
+                    .withCmd(args)
                     .withEnv("K3S_KUBECONFIG_MODE", "644")
+                    .withEnv("K3S_TOKEN", cluster.getClusterToken())
                     .withPortBinding(K3S_API_SERVER_PORT, hostPort)
-                    .withNamedVolume(volumeName, "/var/lib/rancher/k3s")
-                    .withDockerNetwork(config.services().dockerNetwork())
+                    .withNamedVolume(containerName, K3S_DATA_DIR)
+                    .withPrimaryNetwork(networkName(cluster))
                     .withPrivileged(true)
                     .withLogRotation()
                     .build();
-            info = lifecycleManager.createAndStart(spec);
+            containerId = lifecycleManager.create(spec);
+            if (!manifests.isEmpty()) {
+                Map<String, byte[]> files = new LinkedHashMap<>();
+                manifests.forEach((file, content) ->
+                        files.put(MANIFESTS_DIR + "/" + file, content.getBytes(StandardCharsets.UTF_8)));
+                lifecycleManager.copyFilesToContainer(containerId, files);
+            }
+            ContainerLifecycleManager.ContainerInfo info = lifecycleManager.startCreated(containerId, spec);
+            hostPorts.put(info.containerId(), hostPort);
+            cluster.setContainerId(info.containerId());
+            cluster.setHostPort(hostPort);
+            joinEmulatorNetwork(cluster, info.containerId());
+            setEndpoints(cluster, info.containerId(), hostPort);
         } catch (RuntimeException e) {
-            // Dispose whatever this start managed to create. The container is removed first:
-            // a container that started but failed post-start inspection would otherwise keep
-            // running and pin the volume. The volume is only removed when THIS start created
-            // it — a pre-existing one may hold a previous cluster's k3s state and must
-            // survive a transient start failure. The port is released even if that cleanup
-            // fails, and a cleanup failure never hides the original cause.
+            // Dispose whatever this start created. The volume is only removed when THIS start created it: a
+            // pre-existing one holds the cluster's k3s state and must survive a transient start failure.
             try {
                 lifecycleManager.removeIfExists(containerName);
                 if (volumeCreatedByThisStart) {
-                    lifecycleManager.removeVolume(volumeName);
+                    lifecycleManager.removeVolume(containerName);
                 }
             } catch (RuntimeException cleanupFailure) {
                 e.addSuppressed(cleanupFailure);
             } finally {
                 portAllocator.release(hostPort);
+                if (containerId != null) {
+                    hostPorts.remove(containerId);
+                }
             }
             throw e;
         }
-        hostPorts.put(info.containerId(), hostPort);
-        cluster.setContainerId(info.containerId());
+        LOG.infov("k3s server {0} started for AKS cluster {1} on port {2} (internal: {3})",
+                cluster.getContainerId(), cluster.getName(), hostPort, cluster.getInternalEndpoint());
+    }
 
+    private void adoptServer(ManagedCluster cluster, String containerId) {
+        ContainerLifecycleManager.ContainerInfo info = lifecycleManager.adopt(containerId,
+                List.of(K3S_API_SERVER_PORT));
+        OptionalInt published = info.publishedHostPort(K3S_API_SERVER_PORT);
+        int hostPort = published.orElse(cluster.getHostPort() == null ? 0 : cluster.getHostPort());
+        if (hostPort > 0 && portAllocator.reserveUnprobed(hostPort)) {
+            hostPorts.put(containerId, hostPort);
+        }
+        cluster.setContainerId(containerId);
+        cluster.setHostPort(hostPort);
+        joinEmulatorNetwork(cluster, containerId);
+        setEndpoints(cluster, containerId, hostPort);
+        LOG.infov("Adopted k3s server {0} for AKS cluster {1} on port {2}", containerId, cluster.getName(), hostPort);
+    }
+
+    /** A previously used host port when it is still free, so kubeconfigs survive an upgrade; else a new one. */
+    private int claimHostPort(Integer previous) {
+        if (previous != null && previous > 0) {
+            int claimed = portAllocator.claimOrZero(previous);
+            if (claimed > 0) {
+                return claimed;
+            }
+        }
+        return portAllocator.allocate(config.services().aks().apiServerBasePort(),
+                config.services().aks().apiServerMaxPort());
+    }
+
+    /**
+     * The network floci-az itself reaches containers on: the configured one, or the one its own container is on.
+     * The server joins it next to the cluster network, so in-Docker clients reach the API server as before.
+     */
+    private Optional<String> emulatorNetwork() {
+        Optional<String> configured = config.services().dockerNetwork().filter(n -> !n.isBlank());
+        if (configured.isPresent()) {
+            return configured;
+        }
+        return containerDetector.isRunningInContainer() ? networkResolver.resolveNetworkName() : Optional.empty();
+    }
+
+    private void joinEmulatorNetwork(ManagedCluster cluster, String containerId) {
+        Optional<String> network = emulatorNetwork().filter(n -> !n.equals(networkName(cluster)));
+        if (network.isEmpty() || lifecycleManager.addressOnNetwork(containerId, network.get()).isPresent()) {
+            return;
+        }
+        try {
+            lifecycleManager.connectToNetwork(containerId, network.get());
+        } catch (RuntimeException e) {
+            LOG.warnv("Could not connect the k3s server of AKS cluster {0} to network {1}: {2}", cluster.getName(),
+                    network.get(), e.getMessage());
+        }
+    }
+
+    private void setEndpoints(ManagedCluster cluster, String containerId, int hostPort) {
+        String containerName = containerName(cluster);
         if (lifecycleManager.publishedEndpoints()) {
             cluster.setEndpoint("https://" + lifecycleManager.daemonHost() + ":" + hostPort);
             cluster.setInternalEndpoint(cluster.getEndpoint());
         } else if (containerDetector.isRunningInContainer()) {
             cluster.setEndpoint("https://" + containerName + ":" + K3S_API_SERVER_PORT);
-            ContainerLifecycleManager.EndpointInfo ep = info.getEndpoint(K3S_API_SERVER_PORT);
-            cluster.setInternalEndpoint(ep != null
-                    ? "https://" + ep.host() + ":" + ep.port()
-                    : cluster.getEndpoint());
+            Optional<String> network = emulatorNetwork();
+            Optional<String> address = network.flatMap(n -> lifecycleManager.addressOnNetwork(containerId, n));
+            cluster.setInternalEndpoint(network.filter(ContainerLifecycleManager::resolvesContainerNames).isPresent()
+                    || address.isEmpty()
+                    ? cluster.getEndpoint()
+                    : "https://" + address.get() + ":" + K3S_API_SERVER_PORT);
         } else {
             cluster.setEndpoint("https://localhost:" + hostPort);
             cluster.setInternalEndpoint(cluster.getEndpoint());
         }
-
-        // FQDN reflects the actual API server endpoint for kubectl to use
-        cluster.setFqdn(cluster.getEndpoint().replace("https://", ""));
-
-        LOG.infov("k3s container {0} started for cluster {1} on port {2} (internal: {3})",
-                info.containerId(), cluster.getName(), hostPort, cluster.getInternalEndpoint());
-    }
-
-    /** Polls the k3s /livez endpoint to detect readiness. */
-    public boolean isReady(ManagedCluster cluster) {
-        String endpoint = cluster.getInternalEndpoint() != null
-                ? cluster.getInternalEndpoint()
-                : cluster.getEndpoint();
-        if (endpoint == null || cluster.getContainerId() == null) {
-            return false;
-        }
-        String livezUrl = endpoint + "/livez";
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(livezUrl).toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
-            if (conn instanceof HttpsURLConnection https) {
-                disableSslVerification(https);
-            }
-            int code = conn.getResponseCode();
-            return code == 200 || code == 401 || code == 403;
-        } catch (MalformedURLException e) {
-            // Not "still starting": the probe itself cannot run, so the cluster would stay Creating forever.
-            LOG.warnv("Cannot probe {0} for AKS cluster {1}: {2}", livezUrl, cluster.getName(), e.getMessage());
-            return false;
-        } catch (Exception e) {
-            LOG.debugv("AKS cluster {0} not ready at {1}: {2}", cluster.getName(), livezUrl, e.toString());
-            return false;
-        }
     }
 
     /**
-     * Extracts the kubeconfig from the running k3s container,
-     * storing it base64-encoded on the cluster and updating the CA data.
+     * The Docker daemon's host when clients reach clusters at it (published endpoint mode) and it is not
+     * {@code localhost}: the API certificate must name it too. A SAN takes the bare address, not the bracketed URL
+     * form of an IPv6 literal.
      */
-    public void finalizeCluster(ManagedCluster cluster) {
-        String containerId = cluster.getContainerId();
-        if (containerId == null) {
-            return;
+    public Optional<String> daemonTlsSan() {
+        if (lifecycleManager.publishedEndpoints() && !"localhost".equals(lifecycleManager.daemonAddress())) {
+            return Optional.of(lifecycleManager.daemonAddress());
+        }
+        return Optional.empty();
+    }
+
+    /** True once the API server answers {@code /readyz}, asked from inside the server container. */
+    public boolean isApiReady(ManagedCluster cluster) {
+        if (cluster.getContainerId() == null) {
+            return false;
         }
         try {
-            String kubeconfigYaml = execInContainer(containerId,
-                    new String[]{"cat", "/etc/rancher/k3s/k3s.yaml"});
-
-            // Rewrite the server URL to the public endpoint
-            String publicEndpoint = cluster.getEndpoint();
-            String rewritten = kubeconfigYaml.replaceAll(
-                    "server: https://[^\\n]+",
-                    "server: " + publicEndpoint);
-
-            cluster.setKubeconfig(Base64.getEncoder().encodeToString(
-                    rewritten.getBytes(StandardCharsets.UTF_8)));
-
-            String caData = extractYamlField(kubeconfigYaml, "certificate-authority-data");
-            if (caData != null) {
-                cluster.setCaData(caData.trim());
-            }
-
-            LOG.infov("Finalized AKS cluster {0} with kubeconfig and CA data", cluster.getName());
-        } catch (Exception e) {
-            LOG.warnv("Could not extract kubeconfig for cluster {0}: {1}",
-                    cluster.getName(), e.getMessage());
+            ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                    "kubectl", "get", "--raw=/readyz");
+            return result.exitCode() == 0 && result.output().trim().endsWith("ok");
+        } catch (RuntimeException e) {
+            LOG.debugv("AKS cluster {0} not ready: {1}", cluster.getName(), e.getMessage());
+            return false;
         }
     }
 
     /**
-     * Stops and removes the k3s container for the given cluster at emulator shutdown, unless
-     * {@code keepRunningOnShutdown} asks to leave it running. An explicit delete uses {@link #removeCluster}.
+     * Reads the k3s admin kubeconfig from the server and keeps its CA, client certificate and key on the cluster.
+     *
+     * @throws IllegalStateException when the kubeconfig cannot be read or lacks a credential
+     */
+    public void extractCredentials(ManagedCluster cluster) {
+        ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                "cat", "/etc/rancher/k3s/k3s.yaml");
+        if (result.exitCode() != 0) {
+            throw new IllegalStateException("could not read the k3s kubeconfig: " + result.output().trim());
+        }
+        String yaml = result.output();
+        String ca = extractYamlField(yaml, "certificate-authority-data");
+        String cert = extractYamlField(yaml, "client-certificate-data");
+        String key = extractYamlField(yaml, "client-key-data");
+        if (ca == null || cert == null || key == null) {
+            throw new IllegalStateException("the k3s kubeconfig has no CA or client credential");
+        }
+        cluster.setCaData(ca);
+        cluster.setClientCertificateData(cert);
+        cluster.setClientKeyData(key);
+        LOG.infov("Read the kubeconfig of AKS cluster {0}", cluster.getName());
+    }
+
+    /**
+     * Runs {@code kubectl} with {@code args} inside the server container.
+     *
+     * @throws IllegalStateException when kubectl exits non-zero
+     */
+    public String kubectl(ManagedCluster cluster, String... args) {
+        String[] cmd = new String[args.length + 1];
+        cmd[0] = "kubectl";
+        System.arraycopy(args, 0, cmd, 1, args.length);
+        ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(), cmd);
+        if (result.exitCode() != 0) {
+            throw new IllegalStateException("kubectl " + String.join(" ", args) + " failed: " + result.output().trim());
+        }
+        return result.output();
+    }
+
+    // ── Agents ────────────────────────────────────────────────────────────────
+
+    /** What an agent container needs that the cluster record does not hold. */
+    record AgentSpec(String nodeName, String image, List<String> args, double cpus, long memoryBytes) {
+    }
+
+    /**
+     * Makes the node's agent container run {@code spec}: adopts one created from the same image, otherwise
+     * replaces or creates it. The node password is derived from the cluster token and the node name, so a node
+     * recreated on a new image rejoins under its own name.
+     *
+     * @return the agent container id
+     */
+    public String ensureAgent(ManagedCluster cluster, AgentNode node, AgentSpec spec) {
+        String name = agentContainerName(cluster, spec.nodeName());
+        Optional<Container> existing = lifecycleManager.findByName(name);
+        if (existing.isPresent() && spec.image().equals(existing.get().getImage())) {
+            return lifecycleManager.adopt(existing.get().getId(), List.of()).containerId();
+        }
+        existing.ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+        lifecycleManager.ensureImageAvailable(spec.image());
+        lifecycleManager.ensureVolume(storageVolumeName(cluster));
+        int hostCpus = lifecycleManager.dockerCpuCount();
+        ContainerSpec containerSpec = containerBuilder.newContainer(spec.image())
+                .withName(name)
+                .withHostname(spec.nodeName())
+                .withLabels(identityLabels(cluster))
+                .withLabel(ROLE_LABEL, "agent")
+                .withLabel(NODE_LABEL, spec.nodeName())
+                .withCmd(spec.args())
+                .withEnv("K3S_URL", "https://" + containerName(cluster) + ":" + K3S_API_SERVER_PORT)
+                .withEnv("K3S_TOKEN", cluster.getClusterToken())
+                .withNamedVolume(storageVolumeName(cluster), STORAGE_DIR)
+                .withPrimaryNetwork(networkName(cluster))
+                .withCpus(Math.min(spec.cpus(), hostCpus))
+                .withMemoryBytes(spec.memoryBytes())
+                .withPrivileged(true)
+                .withLogRotation()
+                .build();
+        String containerId = lifecycleManager.create(containerSpec);
+        try {
+            lifecycleManager.copyFilesToContainer(containerId, Map.of("/etc/rancher/node/password",
+                    nodePassword(cluster, spec.nodeName()).getBytes(StandardCharsets.UTF_8)));
+            lifecycleManager.startCreated(containerId, containerSpec);
+        } catch (RuntimeException e) {
+            lifecycleManager.removeIfExists(name);
+            throw e;
+        }
+        node.setContainerId(containerId);
+        node.setImage(spec.image());
+        LOG.infov("Started k3s agent {0} for node {1} of AKS cluster {2}", containerId, spec.nodeName(),
+                cluster.getName());
+        return containerId;
+    }
+
+    /** Removes a node: its agent container, and its Node object when the API server is up. */
+    public void removeAgent(ManagedCluster cluster, String nodeName, boolean deleteNodeObject) {
+        lifecycleManager.findByName(agentContainerName(cluster, nodeName))
+                .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+        if (deleteNodeObject) {
+            try {
+                kubectl(cluster, "delete", "node", nodeName, "--ignore-not-found", "--wait=false");
+            } catch (RuntimeException e) {
+                LOG.warnv("Could not delete node {0} of AKS cluster {1}: {2}", nodeName, cluster.getName(),
+                        e.getMessage());
+            }
+        }
+        LOG.infov("Removed node {0} of AKS cluster {1}", nodeName, cluster.getName());
+    }
+
+    /** Node readiness as the API server reports it: node name to whether its Ready condition is True. */
+    public Map<String, Boolean> nodeReadiness(ManagedCluster cluster) {
+        Map<String, Boolean> ready = new HashMap<>();
+        String out;
+        try {
+            out = kubectl(cluster, "get", "nodes", "-o",
+                    "jsonpath={range .items[*]}{.metadata.name}{\"\\t\"}"
+                            + "{.status.conditions[?(@.type==\"Ready\")].status}{\"\\t\"}"
+                            + "{.spec.taints[*].key}{\"\\n\"}{end}");
+        } catch (RuntimeException e) {
+            LOG.debugv("Could not list nodes of AKS cluster {0}: {1}", cluster.getName(), e.getMessage());
+            return ready;
+        }
+        for (String line : out.split("\n")) {
+            String[] parts = line.split("\t", -1);
+            if (parts.length < 2 || parts[0].isBlank()) {
+                continue;
+            }
+            boolean uninitialized = parts.length > 2
+                    && parts[2].contains("node.cloudprovider.kubernetes.io/uninitialized");
+            ready.put(parts[0].trim(), "True".equals(parts[1].trim()) && !uninitialized);
+        }
+        return ready;
+    }
+
+    // ── Power and removal ─────────────────────────────────────────────────────
+
+    /** Stops the server and every agent without removing them, for a cluster that is stopped. */
+    public void stopContainers(ManagedCluster cluster, List<String> nodeNames) {
+        for (String nodeName : nodeNames) {
+            lifecycleManager.findByName(agentContainerName(cluster, nodeName))
+                    .ifPresent(c -> lifecycleManager.stop(c.getId(), 10));
+        }
+        if (cluster.getContainerId() != null) {
+            lifecycleManager.stop(cluster.getContainerId(), 10);
+        }
+    }
+
+    /**
+     * Stops and removes the cluster's containers at emulator shutdown, unless {@code keepRunningOnShutdown} asks to
+     * leave them running. An explicit delete uses {@link #removeCluster}.
      */
     public void stopCluster(ManagedCluster cluster) {
         if (cluster.getContainerId() == null) {
             return;
         }
         if (config.services().aks().keepRunningOnShutdown()) {
-            LOG.infov("Leaving k3s container for AKS cluster {0} running", cluster.getName());
+            LOG.infov("Leaving the containers of AKS cluster {0} running", cluster.getName());
             return;
         }
         removeCluster(cluster);
     }
 
     /**
-     * Stops and removes the k3s container and its data volume whatever {@code keepRunningOnShutdown} says. For a record
-     * that is being dropped for good, whose container nothing could reach again once the record is gone.
+     * Removes every container, volume and the network of the cluster whatever {@code keepRunningOnShutdown} says.
+     * For a record that is being dropped for good, whose containers nothing could reach again once it is gone.
      */
     public void removeCluster(ManagedCluster cluster) {
-        if (cluster.getContainerId() == null) {
+        if (cluster.getContainerId() == null && cluster.getInstanceId() == null) {
             return;
         }
-        lifecycleManager.stopAndRemove(cluster.getContainerId(), null);
+        for (String nodeName : nodeNames(cluster)) {
+            lifecycleManager.findByName(agentContainerName(cluster, nodeName))
+                    .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+        }
+        if (cluster.getContainerId() != null) {
+            lifecycleManager.stopAndRemove(cluster.getContainerId(), null);
+        } else {
+            lifecycleManager.findByName(containerName(cluster))
+                    .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+        }
         lifecycleManager.removeVolume(containerName(cluster));
+        lifecycleManager.removeVolume(storageVolumeName(cluster));
+        lifecycleManager.removeNetwork(networkName(cluster));
         releaseHostPort(cluster.getContainerId());
-        LOG.infov("Stopped k3s container for AKS cluster {0}", cluster.getName());
+        LOG.infov("Removed the containers of AKS cluster {0}", cluster.getName());
+    }
+
+    private static List<String> nodeNames(ManagedCluster cluster) {
+        List<String> names = new ArrayList<>();
+        cluster.pools().forEach(p -> p.nodes().forEach(n -> names.add(n.getName())));
+        return names;
     }
 
     private void releaseHostPort(String containerId) {
@@ -251,36 +463,34 @@ public class AksClusterManager {
         }
     }
 
+    // ── Names ─────────────────────────────────────────────────────────────────
+
     String containerName(ManagedCluster cluster) {
         return ContainerStorageHelper.dockerName(config, "aks-" + cluster.getInstanceId());
     }
 
-    private String execInContainer(String containerId, String[] cmd) throws Exception {
-        DockerClient dockerClient = lifecycleManager.getDockerClient();
-        ExecCreateCmdResponse exec = dockerClient
-                .execCreateCmd(containerId)
-                .withCmd(cmd)
-                .withAttachStdout(true)
-                .withAttachStderr(true)
-                .exec();
-
-        StringBuilder output = new StringBuilder();
-        boolean completed = dockerClient.execStartCmd(exec.getId())
-                .exec(new ResultCallback.Adapter<Frame>() {
-                    @Override
-                    public void onNext(Frame frame) {
-                        output.append(new String(frame.getPayload(), StandardCharsets.UTF_8));
-                    }
-                })
-                .awaitCompletion(10, TimeUnit.SECONDS);
-
-        if (!completed) {
-            throw new RuntimeException("exec timed out in container " + containerId);
-        }
-        return output.toString();
+    String agentContainerName(ManagedCluster cluster, String nodeName) {
+        return containerName(cluster) + "-" + nodeName;
     }
 
-    private static String extractYamlField(String yaml, String fieldName) {
+    static String networkName(ManagedCluster cluster) {
+        return "floci-aks-" + cluster.getInstanceId();
+    }
+
+    String storageVolumeName(ManagedCluster cluster) {
+        return containerName(cluster) + "-storage";
+    }
+
+    private static Map<String, String> identityLabels(ManagedCluster cluster) {
+        return ContainerStorageHelper.resourceIdentityLabels("aks", cluster.getName(), cluster.getSubscriptionId(),
+                cluster.getResourceGroup(), cluster.getLocation());
+    }
+
+    static String nodePassword(ManagedCluster cluster, String nodeName) {
+        return AksHashes.sha256Hex(cluster.getClusterToken() + ":" + nodeName).substring(0, 32);
+    }
+
+    static String extractYamlField(String yaml, String fieldName) {
         for (String line : yaml.split("\n")) {
             String trimmed = line.trim();
             if (trimmed.startsWith(fieldName + ":")) {
@@ -288,37 +498,5 @@ public class AksClusterManager {
             }
         }
         return null;
-    }
-
-    @SuppressWarnings("java:S4830")
-    private void disableSslVerification(HttpsURLConnection conn) {
-        try {
-            TrustManager[] trustAll = new TrustManager[]{
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return null; }
-                    public void checkClientTrusted(X509Certificate[] c, String a) {}
-                    public void checkServerTrusted(X509Certificate[] c, String a) {}
-                }
-            };
-            SSLContext sc = SSLContext.getInstance("TLS");
-            sc.init(null, trustAll, new SecureRandom());
-            conn.setSSLSocketFactory(sc.getSocketFactory());
-            conn.setHostnameVerifier((h, s) -> true);
-        } catch (Exception e) {
-            LOG.debugv("Could not disable SSL verification: {0}", e.getMessage());
-        }
-    }
-
-    /**
-     * k3s server arguments. The API certificate must be valid for every host the cluster is
-     * addressed by: {@code localhost} always, plus the Docker daemon's host in published mode.
-     */
-    List<String> k3sServerArgs() {
-        List<String> args = new ArrayList<>(List.of("server", "--disable=traefik", "--tls-san=localhost"));
-        if (lifecycleManager.publishedEndpoints() && !"localhost".equals(lifecycleManager.daemonAddress())) {
-            // a SAN takes the bare address, not the bracketed URL form of an IPv6 literal
-            args.add("--tls-san=" + lifecycleManager.daemonAddress());
-        }
-        return args;
     }
 }

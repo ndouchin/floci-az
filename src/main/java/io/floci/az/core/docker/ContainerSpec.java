@@ -31,6 +31,10 @@ import java.util.Map;
  * @param workingDir Working directory inside the container (overrides image WORKDIR)
  * @param user User the container process runs as, formatted "uid[:gid]" (null = image USER)
  * @param groupAdd Supplementary group IDs added to the container process
+ * @param hostname Hostname inside the container (null = Docker's default, the short container id)
+ * @param nanoCpus CPU limit in billionths of a CPU (null = no limit)
+ * @param joinNetworkAtCreate Join {@code networkMode} when the container is created even with port bindings,
+ *                            so it is the container's primary network (default route and first address)
  */
 public record ContainerSpec(
         String image,
@@ -52,8 +56,22 @@ public record ContainerSpec(
         List<String> dnsServers,
         String workingDir,
         String user,
-        List<String> groupAdd
+        List<String> groupAdd,
+        String hostname,
+        Long nanoCpus,
+        boolean joinNetworkAtCreate
 ) {
+    /** The spec without a hostname, a CPU limit or a primary network, the shape it had before they existed. */
+    public ContainerSpec(String image, String name, List<String> env, List<String> cmd, List<String> entrypoint,
+                         Long memoryBytes, Map<Integer, Integer> portBindings, List<Integer> exposedPorts,
+                         String networkMode, List<Mount> mounts, List<Bind> binds, List<String> extraHosts,
+                         Map<String, String> labels, LogConfig logConfig, boolean privileged, String cgroupnsMode,
+                         List<String> dnsServers, String workingDir, String user, List<String> groupAdd) {
+        this(image, name, env, cmd, entrypoint, memoryBytes, portBindings, exposedPorts, networkMode, mounts, binds,
+                extraHosts, labels, logConfig, privileged, cgroupnsMode, dnsServers, workingDir, user, groupAdd,
+                null, null, false);
+    }
+
     /**
      * Creates a minimal spec with just the image name.
      * All other fields will be null or empty collections.
@@ -76,6 +94,13 @@ public record ContainerSpec(
      */
     public boolean hasMemoryLimit() {
         return memoryBytes != null && memoryBytes > 0;
+    }
+
+    /**
+     * Returns true if this spec has a CPU limit configured.
+     */
+    public boolean hasCpuLimit() {
+        return nanoCpus != null && nanoCpus > 0;
     }
 
     /**

@@ -131,6 +131,7 @@ public class ContainerLifecycleManager {
                 .withHostConfig(hostConfig);
 
         if (spec.name() != null) createCmd.withName(spec.name());
+        if (spec.hostname() != null && !spec.hostname().isBlank()) createCmd.withHostName(spec.hostname());
         if (spec.user() != null && !spec.user().isBlank()) createCmd.withUser(spec.user());
         if (spec.env() != null && !spec.env().isEmpty()) createCmd.withEnv(spec.env());
         // An empty list is meaningful: it clears the image's own CMD, which a caller that sets
@@ -165,8 +166,7 @@ public class ContainerLifecycleManager {
         dockerClient.startContainerCmd(containerId).exec();
         LOG.infov("Started container {0}", containerId);
 
-        if (spec.networkMode() != null && !spec.networkMode().isBlank()
-                && spec.hasPortBindings() && !containerDetector.isRunningInContainer()) {
+        if (spec.networkMode() != null && !spec.networkMode().isBlank() && !joinsNetworkAtCreate(spec)) {
             try {
                 dockerClient.connectToNetworkCmd()
                         .withContainerId(containerId)
@@ -947,6 +947,64 @@ public class ContainerLifecycleManager {
         }
     }
 
+    /**
+     * Creates a user-defined bridge network if it does not exist yet, labelled like every emulator resource
+     * plus {@code labels}. Containers on it resolve each other by container name.
+     */
+    public void ensureNetwork(String name, Map<String, String> labels) {
+        try {
+            dockerClient.inspectNetworkCmd().withNetworkId(name).exec();
+            return;
+        } catch (NotFoundException expected) {
+            LOG.debugv("Network {0} does not exist yet", name);
+        }
+        dockerClient.createNetworkCmd()
+                .withName(name)
+                .withDriver("bridge")
+                .withLabels(mergedLabels(labels))
+                .exec();
+        LOG.infov("Created network {0}", name);
+    }
+
+    /** Removes a network, ignoring one that does not exist; a network still in use is logged and left. */
+    public void removeNetwork(String name) {
+        try {
+            dockerClient.removeNetworkCmd(name).exec();
+            LOG.infov("Removed network {0}", name);
+        } catch (NotFoundException ignored) {
+        } catch (Exception e) {
+            LOG.warnv("Error removing network {0}: {1}", name, e.getMessage());
+        }
+    }
+
+    /** Connects a container to one more network, keeping the networks it is already on. */
+    public void connectToNetwork(String containerId, String network) {
+        dockerClient.connectToNetworkCmd()
+                .withContainerId(containerId)
+                .withNetworkId(network)
+                .exec();
+        LOG.debugv("Connected container {0} to network {1}", containerId, network);
+    }
+
+    /** The container's IPv4 address on {@code network}, empty when it is not on that network. */
+    public Optional<String> addressOnNetwork(String containerId, String network) {
+        InspectContainerResponse inspect = dockerClient.inspectContainerCmd(containerId).exec();
+        if (inspect.getNetworkSettings() == null || inspect.getNetworkSettings().getNetworks() == null) {
+            return Optional.empty();
+        }
+        ContainerNetwork attached = inspect.getNetworkSettings().getNetworks().get(network);
+        if (attached == null || attached.getIpAddress() == null || attached.getIpAddress().isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(attached.getIpAddress());
+    }
+
+    /** The number of CPUs the Docker daemon can give a container, the upper bound of a CPU limit. */
+    public int dockerCpuCount() {
+        Integer cpus = dockerClient.infoCmd().exec().getNCPU();
+        return cpus == null || cpus < 1 ? 1 : cpus;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private HostConfig buildHostConfig(ContainerSpec spec) {
@@ -965,6 +1023,7 @@ public class ContainerLifecycleManager {
         }
 
         if (spec.hasMemoryLimit()) hostConfig.withMemory(spec.memoryBytes());
+        if (spec.hasCpuLimit()) hostConfig.withNanoCPUs(spec.nanoCpus());
 
         if (spec.hasPortBindings()) {
             Ports ports = new Ports();
@@ -983,11 +1042,7 @@ public class ContainerLifecycleManager {
             hostConfig.withPortBindings(ports);
         }
 
-        // Only set networkMode during creation when there are no host port bindings;
-        // containers with port bindings connect to the named network via connectToNetworkCmd()
-        // after start to avoid suppressing port publishing on Docker Desktop (macOS).
-        if (spec.networkMode() != null && !spec.networkMode().isBlank()
-                && (!spec.hasPortBindings() || containerDetector.isRunningInContainer())) {
+        if (spec.networkMode() != null && !spec.networkMode().isBlank() && joinsNetworkAtCreate(spec)) {
             hostConfig.withNetworkMode(spec.networkMode());
         }
 
@@ -1003,6 +1058,15 @@ public class ContainerLifecycleManager {
             hostConfig.withDns(spec.dnsServers().toArray(new String[0]));
 
         return hostConfig;
+    }
+
+    /**
+     * Only set networkMode during creation when there are no host port bindings, or when the spec asks for a
+     * primary network; containers with port bindings connect to the named network via connectToNetworkCmd()
+     * after start to avoid suppressing port publishing on Docker Desktop (macOS).
+     */
+    private boolean joinsNetworkAtCreate(ContainerSpec spec) {
+        return spec.joinNetworkAtCreate() || !spec.hasPortBindings() || containerDetector.isRunningInContainer();
     }
 
     private ContainerInfo resolveContainerInfo(String containerId, ContainerSpec spec) {

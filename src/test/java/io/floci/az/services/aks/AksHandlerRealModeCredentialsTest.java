@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -50,7 +51,9 @@ class AksHandlerRealModeCredentialsTest {
             .body("{\"location\":\"eastus\",\"properties\":{}}")
             .put(BASE + name + "?api-version=2025-10-01")
             .then().statusCode(201)
-            .body("properties.provisioningState", equalTo(expectedState));
+            .body("properties.provisioningState", equalTo("Creating"));
+        AksTestPolling.until(Duration.ofSeconds(10), () -> expectedState.equals(given()
+            .get(BASE + name + "?api-version=2025-10-01").path("properties.provisioningState")));
     }
 
     @Test
@@ -82,7 +85,8 @@ class AksHandlerRealModeCredentialsTest {
     @Test
     @DisplayName("listClusterAdminCredential on a Failed cluster is rejected")
     void adminCredentialsOfFailedClusterAreRejected() {
-        doThrow(new IllegalStateException("docker unavailable")).when(clusterManager).startCluster(any());
+        doThrow(new IllegalStateException("docker unavailable")).when(clusterManager)
+            .prepareServer(any(), any(), any(), any());
         createCluster("failed-cluster", "Failed");
 
         given()

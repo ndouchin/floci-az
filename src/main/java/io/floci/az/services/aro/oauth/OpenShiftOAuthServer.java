@@ -47,7 +47,6 @@ public final class OpenShiftOAuthServer {
 
     private static final String SESSION_COOKIE = "ssn";
     private static final Pattern PKCE = Pattern.compile("^[a-zA-Z0-9~._-]{43,128}$");
-    private static final List<String> ADMIN_GROUPS = List.of("system:masters", "system:cluster-admins");
     private static final String INVALID_REQUEST = "invalid_request";
     private static final String UNAUTHORIZED_CLIENT = "unauthorized_client";
     private static final String INVALID_GRANT = "invalid_grant";
@@ -147,10 +146,13 @@ public final class OpenShiftOAuthServer {
     }
 
     /**
-     * {@code DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/<name>}: removes a token by object name, for its
-     * owner or a cluster administrator.
+     * {@code DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/<name>}: removes a token by object name. OpenShift
+     * lets any authenticated user do it (ClusterRoleBinding {@code system:oauth-token-deleters} gives
+     * {@code system:authenticated} the {@code delete} verb on {@code oauthaccesstokens}, openshift-apiserver
+     * {@code bootstrappolicy}); knowing the name takes knowing the token. The caller checks the request is
+     * authenticated.
      */
-    public OAuthResponse revoke(String objectName, String requester, List<String> requesterGroups) {
+    public OAuthResponse revoke(String objectName) {
         Optional<OAuthToken> stored = tokens.get(objectName);
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("name", objectName);
@@ -159,12 +161,6 @@ public final class OpenShiftOAuthServer {
         if (stored.isEmpty()) {
             return kubeStatus(404, "Failure", "oauthaccesstokens.oauth.openshift.io \"" + objectName + "\" not found",
                     "NotFound", details);
-        }
-        boolean admin = requesterGroups.stream().anyMatch(ADMIN_GROUPS::contains);
-        if (!admin && !stored.get().userName().equals(requester)) {
-            return kubeStatus(403, "Failure", "oauthaccesstokens.oauth.openshift.io \"" + objectName + "\" is forbidden: "
-                    + "User \"" + requester + "\" cannot delete resource \"oauthaccesstokens\" in API group "
-                    + "\"oauth.openshift.io\" at the cluster scope", "Forbidden", details);
         }
         tokens.remove(objectName);
         return kubeStatus(200, "Success", null, null, details);

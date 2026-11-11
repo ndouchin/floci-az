@@ -757,7 +757,8 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         try {
             clusterManager.applyConsole(cluster);
             consolesApplied.add(id);
-            consoleDeadlines.put(id, Instant.now().plusSeconds(config.services().aro().console().readyTimeoutSeconds()));
+            consoleDeadlines.put(id, Instant.now()
+                    .plusSeconds(config.services().aro().console().readyTimeoutSeconds()));
             finalizeErrors.remove(id);
             LOG.infov("ARO cluster {0}: console objects applied for {1}", cluster.getName(),
                     AroClusterManager.consoleUrl(cluster));

@@ -171,17 +171,16 @@ class OpenShiftOAuthServerTest {
     }
 
     @Test
-    void revocationIsByObjectNameAndOnlyForTheOwnerOrAnAdministrator() throws Exception {
+    void revocationIsByObjectName() throws Exception {
         String token = login();
         String name = OAuthTokens.objectName(token);
-        assertEquals(403, server.revoke(name, "someone", List.of("system:authenticated")).status());
-        OAuthResponse deleted = server.revoke(name, "kube:admin", List.of("system:cluster-admins"));
+        OAuthResponse deleted = server.revoke(name);
         assertEquals(200, deleted.status());
         JsonNode status = MAPPER.readTree(deleted.body());
         assertEquals("Success", status.path("status").asText());
         assertEquals("oauthaccesstokens", status.path("details").path("kind").asText());
         assertTrue(server.authenticateToken(token).isEmpty());
-        OAuthResponse missing = server.revoke(name, "system:admin", List.of("system:masters"));
+        OAuthResponse missing = server.revoke(name);
         assertEquals(404, missing.status());
         assertEquals("NotFound", MAPPER.readTree(missing.body()).path("reason").asText());
     }

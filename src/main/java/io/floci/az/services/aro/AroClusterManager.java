@@ -418,14 +418,16 @@ public class AroClusterManager {
         } else if (containerDetector.isRunningInContainer()) {
             direct = "https://" + containerName + ":" + API_PORT;
             EndpointInfo endpoint = info.getEndpoint(API_PORT);
-            cluster.setInternalEndpoint(endpoint != null ? "https://" + endpoint.host() + ":" + endpoint.port() : direct);
+            cluster.setInternalEndpoint(endpoint != null
+                    ? "https://" + endpoint.host() + ":" + endpoint.port() : direct);
             cluster.setPublicIp(endpoint != null ? ipOf(endpoint.host()) : "127.0.0.1");
         } else {
             direct = "https://localhost:" + cluster.getApiHostPort();
             cluster.setInternalEndpoint(direct);
             cluster.setPublicIp("127.0.0.1");
         }
-        cluster.setEndpoint(cluster.getProxyPort() > 0 ? "https://" + proxyHost() + ":" + cluster.getProxyPort() : direct);
+        cluster.setEndpoint(cluster.getProxyPort() > 0
+                ? "https://" + proxyHost() + ":" + cluster.getProxyPort() : direct);
     }
 
     /**

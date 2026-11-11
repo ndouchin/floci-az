@@ -75,6 +75,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -104,6 +105,7 @@ class AroApiProxyTest {
     private int proxyPort;
     private final CompletableFuture<Void> releaseWatch = new CompletableFuture<>();
     private final OAuthTokenStore tokens = OAuthTokenStore.inMemory();
+    private final AtomicReference<String> console = new AtomicReference<>(CONSOLE);
 
     @BeforeAll
     void start() throws Exception {
@@ -142,7 +144,7 @@ class AroApiProxyTest {
         }
         proxy = new AroApiProxy(vertx, proxyPort, new AroApiProxy.Certificates(localhostServing.chainPem(),
                 localhostServing.keyPem(), externalServing.chainPem(), externalServing.keyPem(), clientCa.certPem(),
-                aggregatorClient.chainPem(), aggregatorClient.keyPem()), upstreamClients, oauth, () -> CONSOLE);
+                aggregatorClient.chainPem(), aggregatorClient.keyPem()), upstreamClients, oauth, console::get);
         proxy.listen().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
     }
 
@@ -252,11 +254,26 @@ class AroApiProxyTest {
     }
 
     @Test
-    void theConsolePathRedirectsAndUsersTildeAnswersForAnAssertedUser() throws Exception {
-        HttpResponse<String> console = client(null).send(request("/console", Map.of()).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertEquals(302, console.statusCode());
-        assertEquals(CONSOLE, console.headers().firstValue("Location").orElseThrow());
+    void everyConsolePathRedirectsToTheConsoleOrFailsWithoutOne() throws Exception {
+        for (String path : List.of("/console", "/console/k8s/cluster/projects", "/consoles")) {
+            HttpResponse<String> redirect = client(null).send(request(path, Map.of())
+                    .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(302, redirect.statusCode(), path);
+            assertEquals(CONSOLE, redirect.headers().firstValue("Location").orElseThrow());
+        }
+        console.set(null);
+        try {
+            HttpResponse<String> missing = client(null).send(request("/console", Map.of()).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(500, missing.statusCode());
+            assertEquals("redirection failed: console URL not found\n", missing.body());
+        } finally {
+            console.set(CONSOLE);
+        }
+    }
+
+    @Test
+    void usersTildeAnswersForAnAssertedUserAndIsForwardedOtherwise() throws Exception {
 
         HttpResponse<String> user = client(null).send(request(AroApiProxy.CURRENT_USER_PATH,
                 Map.of("Authorization", "Bearer " + TOKEN)).GET().build(), HttpResponse.BodyHandlers.ofString());

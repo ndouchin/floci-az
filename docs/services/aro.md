@@ -205,13 +205,13 @@ other request to MicroShift's API server.
 | Request | Answer | Source |
 |---|---|---|
 | `GET /.well-known/oauth-authorization-server` | the authentication operator's metadata; `issuer` is `https://<the Host the client used>` | [cluster-authentication-operator `metadata_controller.go`][cao-metadata] |
-| `/oauth/authorize` | code flow with PKCE (`plain`, `S256`). `openshift-challenging-client` (`oc login -u`): `401` with `WWW-Authenticate: Basic realm="openshift"` when the request has `X-CSRF-Token`, else `401` with only a `Warning`; the browser clients get a login page at `/login/kube:admin` and a session cookie `ssn` (5 minutes). Codes are single use and expire after 300 s | [oauth-server][oauth-server] `osin/authorize.go`, `passwordchallenger` |
+| `/oauth/authorize` | code flow with PKCE (`plain`, `S256`). `openshift-challenging-client` (`oc login -u`): `401` with `WWW-Authenticate: Basic realm="openshift"` when the request has `X-CSRF-Token`, else `401` with only a `Warning`; the browser clients get a login page at `/login/kube:admin` and a session cookie `ssn` (5 minutes, the session the authentication operator configures). Codes are single use and expire after 300 s | [oauth-server][oauth-server] `osin/authorize.go`, `passwordchallenger`; cluster-authentication-operator `payload_config_controller.go` (`SessionName: "ssn"`, `SessionMaxAgeSeconds: 5 * 60`) |
 | `POST /oauth/token` | `{"access_token":"sha256~<43>","expires_in":86400,"scope":"user:full","token_type":"Bearer"}`, no refresh token; `scope` is `user:full` when the client asked for none. Errors as osin JSON with status 400 (`invalid_grant`, `invalid_request`, `unauthorized_client`, `unsupported_grant_type`) | `osin/access.go`, `pkg/oauth/handlers/grant.go`, `pkg/osinserver/defaults.go` |
 | `/oauth/token/request`, `/oauth/token/display` | the "Display Token" pages, with the `oc login --token=... --server=...` command | `openshift-browser-client` |
 | `/logout` | ends the login session | |
-| `DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/<name>` | revokes the token whose object name is `sha256~<base64url(SHA-256(token))>` (`oc logout`), for its owner or a cluster administrator | `pkg/osinserver/registrystorage/storage.go` |
+| `DELETE /apis/oauth.openshift.io/v1/oauthaccesstokens/<name>` | revokes the token whose object name is `sha256~<base64url(SHA-256(token))>` (`oc logout`, the console's logout), for any user the proxy authenticates (a token it minted or a client certificate), as ClusterRoleBinding `system:oauth-token-deleters` allows every authenticated user; other requests reach MicroShift, which has no such API | `pkg/osinserver/registrystorage/storage.go`; [openshift-apiserver `bootstrappolicy`][bootstrap-policy] |
 | `GET /apis/user.openshift.io/v1/users/~` | the virtual User of a kubeadmin token or client certificate (older `oc` versions ask for it) | [oauth-apiserver `user/.../etcd.go`][oauth-apiserver-user] |
-| `GET /console` | `302` to the console when it runs | OpenShift kube-apiserver `withConsoleRedirect` |
+| any path starting with `/console`, any method | `302` to the console when it runs, else `500` `redirection failed: console URL not found` | [OpenShift kube-apiserver `withConsoleRedirect`][console-redirect] |
 | anything else | forwarded to MicroShift, streamed both ways; `Upgrade` requests (exec, attach, cp, port-forward, over WebSocket or SPDY) become a byte tunnel | |
 
 What the API server sees, through MicroShift's request-header authentication (the proxy presents MicroShift's
@@ -410,4 +410,6 @@ no OAuth server, and the log says so at startup; recreate it to get `oc login`.
 [oauth-apiserver-user]: https://github.com/openshift/oauth-apiserver/blob/release-4.19/pkg/user/apiserver/registry/user/etcd/etcd.go
 [cao-metadata]: https://github.com/openshift/cluster-authentication-operator/blob/release-4.19/pkg/controllers/metadata/metadata_controller.go
 [console-operator]: https://github.com/openshift/console-operator/tree/release-4.19
+[bootstrap-policy]: https://github.com/openshift/openshift-apiserver/blob/release-4.19/test/testdata/bootstrappolicy/bootstrap_cluster_role_bindings.yaml
+[console-redirect]: https://github.com/openshift/kubernetes/blob/release-4.19/openshift-kube-apiserver/openshiftkubeapiserver/patch_handlerchain.go
 [aro-branding]: https://github.com/Azure/ARO-RP/blob/master/pkg/cluster/consolebranding.go

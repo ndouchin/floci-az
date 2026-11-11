@@ -60,8 +60,9 @@ import java.util.function.Supplier;
  *       authorizes them against the asserted user;</li>
  *   <li>bodies stream both ways with no idle timeout, so watches work, and any {@code Upgrade} request (WebSocket for
  *       exec, attach, cp and port-forward, SPDY/3.1 for older clients) becomes a byte tunnel;</li>
- *   <li>{@code DELETE .../oauthaccesstokens/<name>} revokes, {@code GET .../users/~} answers the virtual User of an
- *       asserted user, and {@code GET /console} redirects to the console, as OpenShift's API server does.</li>
+ *   <li>{@code DELETE .../oauthaccesstokens/<name>} from an asserted user revokes, {@code GET .../users/~} answers
+ *       the virtual User of an asserted user, and any path starting with {@code /console} redirects to the console
+ *       (500 without one), as OpenShift's API server does.</li>
  * </ul>
  *
  * <p>HTTP/1.1 only (ALPN offers nothing else; Go clients fall back from h2). The listener serves MicroShift's own
@@ -153,11 +154,8 @@ final class AroApiProxy {
             serveOAuth(req);
             return;
         }
-        String console = consoleUrl.get();
-        if (req.method() == HttpMethod.GET && console != null && ("/console".equals(path)
-                || path.startsWith("/console/"))) {
-            req.resume();
-            req.response().setStatusCode(302).putHeader(HttpHeaders.LOCATION, console).end();
+        if (path.startsWith("/console")) {
+            redirectToConsole(req);
             return;
         }
         identify(req).onComplete(result -> {
@@ -170,7 +168,7 @@ final class AroApiProxy {
                 req.response().setStatusCode(401).putHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                         .end(UNAUTHORIZED);
             } else if (identity.asserted() && req.method() == HttpMethod.DELETE && path.startsWith(TOKENS_PATH)) {
-                revoke(req, identity, path.substring(TOKENS_PATH.length()));
+                revoke(req, path.substring(TOKENS_PATH.length()));
             } else if (identity.asserted() && req.method() == HttpMethod.GET && CURRENT_USER_PATH.equals(path)) {
                 req.resume();
                 respond(req, OpenShiftOAuthServer.virtualUser(identity.user(), "", identity.groups()));
@@ -180,6 +178,21 @@ final class AroApiProxy {
                 forward(req, identity);
             }
         });
+    }
+
+    /**
+     * OpenShift kube-apiserver's {@code withConsoleRedirect}: any request whose path starts with {@code /console}
+     * gets a 302 to the console, or a 500 when there is none.
+     */
+    private void redirectToConsole(HttpServerRequest req) {
+        String console = consoleUrl.get();
+        req.resume();
+        if (console == null) {
+            req.response().setStatusCode(500).putHeader(HttpHeaders.CONTENT_TYPE, "text/plain; charset=utf-8")
+                    .end("redirection failed: console URL not found\n");
+            return;
+        }
+        req.response().setStatusCode(302).putHeader(HttpHeaders.LOCATION, console).end();
     }
 
     private void serveOAuth(HttpServerRequest req) {
@@ -197,10 +210,9 @@ final class AroApiProxy {
         req.resume();
     }
 
-    private void revoke(HttpServerRequest req, Identity identity, String rawName) {
+    private void revoke(HttpServerRequest req, String rawName) {
         String name = URLDecoder.decode(rawName, StandardCharsets.UTF_8);
-        req.body().onComplete(ignored -> vertx.executeBlocking(
-                        () -> oauth.revoke(name, identity.user(), identity.groups()), false)
+        req.body().onComplete(ignored -> vertx.executeBlocking(() -> oauth.revoke(name), false)
                 .onSuccess(response -> respond(req, response))
                 .onFailure(error -> req.response().setStatusCode(500).end()));
         req.resume();

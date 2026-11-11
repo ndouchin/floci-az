@@ -1,0 +1,161 @@
+# The default storage class Azure Red Hat OpenShift ships, from openshift/csi-operator release-4.19
+# (assets/overlays/azure-disk/generated/standalone/storageclass.yaml), served by a local-path-provisioner
+# instance registered under the Azure Disk CSI driver name, plus the namespace and RBAC both provisioners use.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-cluster-csi-drivers
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+    security.openshift.io/scc.podSecurityLabelSync: "false"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: floci-local-path-provisioner
+  namespace: openshift-cluster-csi-drivers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: floci-local-path-provisioner
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["security.openshift.io"]
+  resources: ["securitycontextconstraints"]
+  resourceNames: ["privileged"]
+  verbs: ["use"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: floci-local-path-provisioner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: floci-local-path-provisioner
+subjects:
+- kind: ServiceAccount
+  name: floci-local-path-provisioner
+  namespace: openshift-cluster-csi-drivers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: floci-local-path-provisioner
+  namespace: openshift-cluster-csi-drivers
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: floci-local-path-provisioner
+  namespace: openshift-cluster-csi-drivers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: floci-local-path-provisioner
+subjects:
+- kind: ServiceAccount
+  name: floci-local-path-provisioner
+  namespace: openshift-cluster-csi-drivers
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-disk-local-path-config
+  namespace: openshift-cluster-csi-drivers
+data:
+  config.json: |-
+    {"nodePathMap":[{"node":"DEFAULT_PATH_FOR_NON_LISTED_NODES","paths":["/var/lib/microshift/floci-local-path/disk"]}]}
+  setup: |-
+    #!/bin/sh
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
+  teardown: |-
+    #!/bin/sh
+    set -eu
+    rm -rf "$VOL_DIR"
+  helperPod.yaml: |-
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: helper-pod
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: helper-pod
+        image: ${HELPER_IMAGE}
+        imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-disk-csi-driver-controller
+  namespace: openshift-cluster-csi-drivers
+  labels:
+    app.kubernetes.io/managed-by: floci-az
+    app.kubernetes.io/name: local-path-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-disk-csi-driver-controller
+  template:
+    metadata:
+      labels:
+        app: azure-disk-csi-driver-controller
+    spec:
+      serviceAccountName: floci-local-path-provisioner
+      containers:
+      - name: local-path-provisioner
+        image: ${PROVISIONER_IMAGE}
+        imagePullPolicy: IfNotPresent
+        command: ["local-path-provisioner", "start", "--config", "/etc/config/config.json", "--provisioner-name", "disk.csi.azure.com", "--configmap-name", "azure-disk-local-path-config", "--service-account-name", "floci-local-path-provisioner", "--helper-image", "${HELPER_IMAGE}"]
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONFIG_MOUNT_PATH
+          value: /etc/config/
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config/
+      volumes:
+      - name: config-volume
+        configMap:
+          name: azure-disk-local-path-config
+---
+allowVolumeExpansion: true
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+  name: managed-csi
+parameters:
+  skuname: Premium_LRS
+provisioner: disk.csi.azure.com
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

@@ -1,0 +1,87 @@
+# The Azure Files storage class Azure Red Hat OpenShift ships on clusters without managed identities, from
+# openshift/csi-operator release-4.19 (assets/overlays/azure-file/generated/standalone/storageclass.yaml), served
+# by a local-path-provisioner instance registered under the Azure Files CSI driver name. It drops the CIFS
+# mountOptions, which a hostPath volume cannot take.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-file-local-path-config
+  namespace: openshift-cluster-csi-drivers
+data:
+  config.json: |-
+    {"nodePathMap":[],"sharedFileSystemPath":"/var/lib/microshift/floci-local-path/file"}
+  setup: |-
+    #!/bin/sh
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
+  teardown: |-
+    #!/bin/sh
+    set -eu
+    rm -rf "$VOL_DIR"
+  helperPod.yaml: |-
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: helper-pod
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: helper-pod
+        image: ${HELPER_IMAGE}
+        imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-file-csi-driver-controller
+  namespace: openshift-cluster-csi-drivers
+  labels:
+    app.kubernetes.io/managed-by: floci-az
+    app.kubernetes.io/name: local-path-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-file-csi-driver-controller
+  template:
+    metadata:
+      labels:
+        app: azure-file-csi-driver-controller
+    spec:
+      serviceAccountName: floci-local-path-provisioner
+      containers:
+      - name: local-path-provisioner
+        image: ${PROVISIONER_IMAGE}
+        imagePullPolicy: IfNotPresent
+        command: ["local-path-provisioner", "start", "--config", "/etc/config/config.json", "--provisioner-name", "file.csi.azure.com", "--configmap-name", "azure-file-local-path-config", "--service-account-name", "floci-local-path-provisioner", "--helper-image", "${HELPER_IMAGE}"]
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONFIG_MOUNT_PATH
+          value: /etc/config/
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config/
+      volumes:
+      - name: config-volume
+        configMap:
+          name: azure-file-local-path-config
+---
+allowVolumeExpansion: true
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azurefile-csi
+parameters:
+  matchTags: "true"
+  skuName: Standard_LRS
+  tags: storageClassName=azurefile-csi
+provisioner: file.csi.azure.com
+reclaimPolicy: Delete
+volumeBindingMode: Immediate

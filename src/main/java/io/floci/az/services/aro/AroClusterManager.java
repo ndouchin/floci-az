@@ -28,6 +28,7 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -54,7 +55,7 @@ public class AroClusterManager {
     private static final String KUBEADMIN_DIR = DATA_DIR + "/resources/kubeadmin";
     /** The namespaces whose pods must all run before a cluster counts as ready. */
     private static final Set<String> CORE_NAMESPACES = Set.of("openshift-dns", "openshift-ingress",
-            "openshift-service-ca");
+            "openshift-service-ca", "openshift-cluster-csi-drivers");
 
     /** What restoring a persisted cluster did. */
     public enum Restore {
@@ -196,8 +197,8 @@ public class AroClusterManager {
     }
 
     /**
-     * True once MicroShift is active, the API server answers {@code /readyz} and every pod of the DNS, router and
-     * service CA namespaces runs.
+     * True once MicroShift is active, the API server answers {@code /readyz} and every pod of the DNS, router,
+     * service CA and storage namespaces runs.
      */
     public boolean isReady(OpenShiftCluster cluster) {
         String containerId = cluster.getContainerId();
@@ -222,9 +223,36 @@ public class AroClusterManager {
         }
     }
 
-    /** Reads the admin kubeconfig, with the server set to the reachable endpoint. */
+    /**
+     * Gives the node its ARO labels and provider id, fills the status of the {@code config.openshift.io} objects and
+     * reads the admin kubeconfig. Throws while the cluster objects are not applied yet; the caller retries.
+     */
     public void finalizeCluster(OpenShiftCluster cluster) {
         String containerId = cluster.getContainerId();
+        String nodeName = nodeName(cluster);
+        String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
+        String clusterGroup = lastSegment(cluster.clusterProfileValue("resourceGroupId"));
+        String vmSize = String.valueOf(cluster.profile("masterProfile").getOrDefault("vmSize",
+                AroProperties.DEFAULT_MASTER_VM_SIZE));
+
+        List<String> label = new ArrayList<>(List.of("oc", "label", "node", nodeName, "--overwrite"));
+        label.addAll(AroManifests.nodeLabels(cluster, vmSize));
+        oc(containerId, label.toArray(String[]::new));
+        String providerId = AroManifests.providerId(cluster, clusterGroup, nodeName);
+        ExecResult currentProvider = lifecycleManager.execInContainer(containerId, "oc", "get", "node", nodeName,
+                "-o", "jsonpath={.spec.providerID}");
+        if (currentProvider.output().isBlank()) {
+            oc(containerId, "oc", "patch", "node", nodeName, "--type=merge",
+                    "-p", "{\"spec\":{\"providerID\":\"" + providerId + "\"}}");
+        }
+        oc(containerId, "oc", "patch", "clusterversion", "version", "--subresource=status", "--type=merge",
+                "-p", AroManifests.clusterVersionStatus(cluster.getImageTag(), Instant.now()));
+        oc(containerId, "oc", "patch", "infrastructure", "cluster", "--subresource=status", "--type=merge",
+                "-p", AroManifests.infrastructureStatus(fullDomain, cluster.getInfraId(), clusterGroup,
+                        networkResourceGroup(cluster)));
+        oc(containerId, "oc", "patch", "ingress.config.openshift.io", "cluster", "--subresource=status",
+                "--type=merge", "-p", AroManifests.ingressStatus());
+
         String host = URI.create(cluster.getEndpoint()).getHost();
         String path = "localhost".equals(host) ? KUBEADMIN_DIR + "/kubeconfig" : KUBEADMIN_DIR + "/" + host
                 + "/kubeconfig";
@@ -234,7 +262,8 @@ public class AroClusterManager {
         }
         String rewritten = kubeconfig.output().replaceAll("server: https://[^\\n]+", "server: " + cluster.getEndpoint());
         cluster.setKubeconfig(Base64.getEncoder().encodeToString(rewritten.getBytes(StandardCharsets.UTF_8)));
-        LOG.infov("ARO cluster {0} finalized: kubeconfig for {1}", cluster.getName(), cluster.getEndpoint());
+        LOG.infov("ARO cluster {0} finalized: node {1}, kubeconfig for {2}", cluster.getName(), nodeName,
+                cluster.getEndpoint());
     }
 
     /** Removes the container at shutdown, unless {@code keepRunningOnShutdown} asks to leave it running. */
@@ -281,7 +310,10 @@ public class AroClusterManager {
     AroManifests.Settings settings(OpenShiftCluster cluster, String containerName) {
         String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
         return new AroManifests.Settings(fullDomain, nodeName(cluster), subjectAltNames(containerName, fullDomain),
-                cluster.networkProfileValue("podCidr"), cluster.networkProfileValue("serviceCidr"));
+                cluster.networkProfileValue("podCidr"), cluster.networkProfileValue("serviceCidr"),
+                cluster.getClusterUuid(), config.services().aro().storageProvisionerImage(),
+                config.services().aro().storageHelperImage(),
+                !(cluster.getProperties().get("platformWorkloadIdentityProfile") instanceof Map));
     }
 
     /**
@@ -338,6 +370,35 @@ public class AroClusterManager {
             portAllocator.reserveUnprobed(port);
         }
         return port;
+    }
+
+    private void oc(String containerId, String... command) {
+        ExecResult result = lifecycleManager.execInContainer(containerId, command);
+        if (result.exitCode() != 0) {
+            throw new IllegalStateException(String.join(" ", command[0], command[1], command[2]) + " failed: "
+                    + result.output().strip());
+        }
+    }
+
+    /** The resource group of the master subnet's virtual network, else the cluster object's own group. */
+    private static String networkResourceGroup(OpenShiftCluster cluster) {
+        Object subnet = cluster.profile("masterProfile").get("subnetId");
+        if (subnet instanceof String id) {
+            String[] parts = id.split("/");
+            for (int i = 0; i < parts.length - 1; i++) {
+                if ("resourceGroups".equalsIgnoreCase(parts[i])) {
+                    return parts[i + 1];
+                }
+            }
+        }
+        return cluster.getResourceGroup();
+    }
+
+    private static String lastSegment(String id) {
+        if (id == null) {
+            return "";
+        }
+        return id.substring(id.lastIndexOf('/') + 1);
     }
 
     private static String ipOf(String host) {

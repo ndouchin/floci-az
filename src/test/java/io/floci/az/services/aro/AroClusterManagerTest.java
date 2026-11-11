@@ -82,6 +82,8 @@ class AroClusterManagerTest {
             openshift-dns                   Running   true
             openshift-ingress               Running   true
             openshift-service-ca            Running   true
+            openshift-cluster-csi-drivers   Running   true
+            openshift-cluster-csi-drivers   Running   true
             """;
         assertTrue(AroClusterManager.corePodsRunning(running));
         assertFalse(AroClusterManager.corePodsRunning(running.replace("true,true", "true,false")));
@@ -151,6 +153,8 @@ class AroClusterManagerTest {
         lenient().when(config.services().aro().imageRepository()).thenReturn("quay.io/minc-org/minc");
         lenient().when(config.services().aro().basePort()).thenReturn(7600);
         lenient().when(config.services().aro().maxPort()).thenReturn(7699);
+        lenient().when(config.services().aro().storageProvisionerImage()).thenReturn("prov:1");
+        lenient().when(config.services().aro().storageHelperImage()).thenReturn("help:1");
         lenient().when(config.services().dockerNetwork()).thenReturn(Optional.empty());
         lenient().when(config.docker().resourceNamespace()).thenReturn(Optional.empty());
         lenient().when(config.docker().logMaxSize()).thenReturn("10m");
@@ -179,6 +183,24 @@ class AroClusterManagerTest {
     }
 
     @Test
+    void aClusterWithManagedIdentitiesHasNoAzureFileClass() {
+        Map<String, byte[]> files = AroManifests.files(new AroManifests.Settings("abc.eastus.aroapp.io",
+                "abc-x2b4c-master-0", List.of("n"), "10.128.0.0/14", "172.30.0.0/16", "c0ffee", "prov:1", "help:1",
+                false));
+        assertFalse(files.containsKey("/etc/microshift/manifests.d/010-floci-aro-storage/storage-azurefile.yaml"));
+        assertFalse(new String(files.get("/etc/microshift/manifests.d/010-floci-aro-storage/kustomization.yaml"))
+                .contains("azurefile"));
+
+        OpenShiftCluster cluster = new OpenShiftCluster();
+        cluster.setProperties(new LinkedHashMap<>(Map.of("clusterProfile", Map.of("domain", "abc"))));
+        cluster.setLocation("eastus");
+        cluster.setInfraId("abc-x2b4c");
+        assertTrue(manager().settings(cluster, "floci-az-aro-1").azureFileClass());
+        cluster.getProperties().put("platformWorkloadIdentityProfile", Map.of("platformWorkloadIdentities", Map.of()));
+        assertFalse(manager().settings(cluster, "floci-az-aro-1").azureFileClass());
+    }
+
+    @Test
     void theNodeIsNamedAfterTheInfraIdLikeAnAroMaster() {
         OpenShiftCluster cluster = new OpenShiftCluster();
         cluster.setInfraId("demo-x2b4c");
@@ -188,7 +210,8 @@ class AroClusterManagerTest {
     @Test
     void theDropInSetsDomainNetworksNamesAndNodeName() {
         String yaml = AroManifests.configDropIn(new AroManifests.Settings("abc.eastus.aroapp.io", "abc-x2b4c-master-0",
-                List.of("floci-az-aro-1", "api.abc.eastus.aroapp.io"), "10.128.0.0/14", "172.30.0.0/16"));
+                List.of("floci-az-aro-1", "api.abc.eastus.aroapp.io"), "10.128.0.0/14", "172.30.0.0/16",
+                "uuid", "p", "h", true));
         assertEquals("""
             apiServer:
               subjectAltNames:
@@ -204,5 +227,29 @@ class AroClusterManagerTest {
             node:
               hostnameOverride: "abc-x2b4c-master-0"
             """, yaml);
+    }
+
+    @Test
+    void theContainerStartsWithTheDropInStorageAndConfigManifests() {
+        Map<String, byte[]> files = AroManifests.files(new AroManifests.Settings("abc.eastus.aroapp.io",
+                "abc-x2b4c-master-0", List.of("n"), "10.128.0.0/14", "172.30.0.0/16", "c0ffee", "prov:1", "help:1",
+                true));
+        assertTrue(files.containsKey("/etc/microshift/config.d/10-floci-aro.yaml"));
+        String storage = new String(files.get("/etc/microshift/manifests.d/010-floci-aro-storage/storage.yaml"));
+        assertTrue(storage.contains("name: managed-csi"));
+        assertTrue(storage.contains("provisioner: disk.csi.azure.com"));
+        assertTrue(storage.contains("image: prov:1"));
+        assertFalse(storage.contains("${"));
+        String azureFile = new String(files.get(
+                "/etc/microshift/manifests.d/010-floci-aro-storage/storage-azurefile.yaml"));
+        assertTrue(azureFile.contains("name: azurefile-csi"));
+        assertTrue(azureFile.contains("provisioner: file.csi.azure.com"));
+        assertFalse(azureFile.contains("${"));
+        assertTrue(new String(files.get("/etc/microshift/manifests.d/010-floci-aro-storage/kustomization.yaml"))
+                .contains("- storage-azurefile.yaml"));
+        String config = new String(files.get("/etc/microshift/manifests.d/030-floci-aro-config/cluster-config.yaml"));
+        assertTrue(config.contains("clusterID: c0ffee"));
+        assertTrue(config.contains("domain: apps.abc.eastus.aroapp.io"));
+        assertEquals(3, files.keySet().stream().filter(k -> k.contains("020-floci-aro-config-crds/0000_")).count());
     }
 }

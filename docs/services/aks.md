@@ -322,6 +322,14 @@ keeps the ranges the cluster was created with. Dual-stack (IPv6) ranges are not 
 used. Clusters recorded before this change keep k3s's own ranges (10.42.0.0/16, 10.43.0.0/16), since their data store
 was initialized with them. metrics-server runs, as AKS ships it; traefik does not.
 
+A pod reaches a Service whose endpoint is on its own node, cluster DNS included, only when the Docker host's kernel
+has `br_netfilter` loaded: without it, the reply between two pods of a node is bridged past conntrack, so the
+Service's address translation is never reversed and the connection times out. Docker loads the module only for
+features that need it, k3s cannot load it from its container, and k3s's network policy controller, which loads it as a
+side effect, is off unless the cluster names a policy engine. Every k3s container therefore makes the host kernel load
+it (a throwaway iptables `physdev` rule) before k3s starts. When that fails, the container's log says
+`floci-az: br_netfilter is not loaded on the Docker host`, and `sudo modprobe br_netfilter` on the host fixes it.
+
 ---
 
 ## Credentials
@@ -528,7 +536,8 @@ kubectl get configmap floci-az-ca -n kube-system -o json \
 ### Networking and limits
 
 - When floci-az runs in a container, the server and the agents join its Docker network, so pods reach it by its
-  address there. When it runs on the host, pods reach `host.docker.internal` (the `host-gateway` entry on Linux).
+  address there. When it runs on a Linux host, pods reach it at the gateway of the cluster's own Docker network, the
+  host's address on that bridge; on Docker Desktop, at the address `host.docker.internal` resolves to.
 - A `coredns-custom` ConfigMap of your own replaces floci-az's override (AKS documents that ConfigMap for your own
   customizations); keep the `floci-az.override` key in it.
 - Python, .NET, Java and JavaScript SDK behavior against the "Microsoft hostnames" mode is not verified; MSAL Go and

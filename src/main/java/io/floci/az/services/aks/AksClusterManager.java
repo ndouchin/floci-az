@@ -44,6 +44,27 @@ public class AksClusterManager {
     /** Hash of the arguments and start-up files a server container was created with. */
     static final String SERVER_ARGS_LABEL = "io.floci.aks.server-args";
 
+    /**
+     * What every k3s container runs before k3s. Without br_netfilter on the Docker host, replies between two pods of a
+     * node are bridged past conntrack, so a Service's DNAT is never reversed and same-node Service traffic, cluster DNS
+     * included, times out. Docker loads the module only for features that need it, k3s cannot modprobe it from its
+     * container, and k3s's network policy controller, whose physdev rules load it as a side effect, is off unless the
+     * cluster names a policy engine. A throwaway physdev rule makes the host kernel load it; its chain is removed
+     * before k3s detects its iptables mode from the rules present. A host that cannot load it keeps the cluster.
+     */
+    private static final String K3S_ENTRYPOINT_SCRIPT = """
+            if [ ! -e /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+              iptables -N FLOCI-BR-NETFILTER && {
+                iptables -A FLOCI-BR-NETFILTER -m physdev --physdev-is-bridged -j RETURN
+                iptables -F FLOCI-BR-NETFILTER
+                iptables -X FLOCI-BR-NETFILTER
+              }
+              [ -e /proc/sys/net/bridge/bridge-nf-call-iptables ] \\
+                || echo "floci-az: br_netfilter is not loaded on the Docker host; same-node Services will fail" >&2
+            fi
+            exec /bin/k3s "$@"
+            """;
+
     /** How a server container came to run, which tells whether the cluster kept its CA. */
     enum ServerStart { ADOPTED, RECREATED_ON_VOLUME, CREATED_FRESH }
 
@@ -171,6 +192,7 @@ public class AksClusterManager {
                     .withLabels(identityLabels(cluster))
                     .withLabel(ROLE_LABEL, "server")
                     .withLabel(SERVER_ARGS_LABEL, hash)
+                    .withEntrypoint(k3sEntrypoint())
                     .withCmd(args)
                     .withEnv("K3S_KUBECONFIG_MODE", "644")
                     .withEnv("K3S_TOKEN", cluster.getClusterToken())
@@ -460,6 +482,7 @@ public class AksClusterManager {
                 .withLabels(identityLabels(cluster))
                 .withLabel(ROLE_LABEL, "agent")
                 .withLabel(NODE_LABEL, spec.nodeName())
+                .withEntrypoint(k3sEntrypoint())
                 .withCmd(spec.args())
                 .withEnv("K3S_URL", "https://" + containerName(cluster) + ":" + K3S_API_SERVER_PORT)
                 .withEnv("K3S_TOKEN", cluster.getClusterToken())
@@ -600,6 +623,11 @@ public class AksClusterManager {
         if (hostPort != null) {
             portAllocator.release(hostPort);
         }
+    }
+
+    /** {@link #K3S_ENTRYPOINT_SCRIPT}, which hands the container's command to k3s as its arguments. */
+    static List<String> k3sEntrypoint() {
+        return List.of("/bin/sh", "-c", K3S_ENTRYPOINT_SCRIPT, "k3s");
     }
 
     // ── Names ─────────────────────────────────────────────────────────────────

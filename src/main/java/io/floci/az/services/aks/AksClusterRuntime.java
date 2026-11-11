@@ -39,12 +39,12 @@ final class AksClusterRuntime {
      * @param microsoftHostnames     whether pods reach Entra as {@code login.microsoftonline.com}
      * @param webhookImage           the azure-workload-identity webhook image
      */
-    record Options(Supplier<String> flociUrl, int webhookCacheTtlSeconds,
+    record Options(Function<ManagedCluster, String> flociUrl, int webhookCacheTtlSeconds,
                    Function<ManagedCluster, String> flociAddress, int flociPort, Supplier<String> caPem,
                    boolean microsoftHostnames, String webhookImage) {
 
         static Options defaults() {
-            return new Options(() -> "http://host.docker.internal:4577", 5, cluster -> null, 4577, () -> null, true,
+            return new Options(cluster -> "http://host.docker.internal:4577", 5, cluster -> null, 4577, () -> null, true,
                     "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3");
         }
     }
@@ -53,7 +53,7 @@ final class AksClusterRuntime {
     private final AksVersions versions;
     private final int maxNodesPerCluster;
     private final Options options;
-    private final Supplier<String> flociUrl;
+    private final Function<ManagedCluster, String> flociUrl;
     private final int webhookCacheTtlSeconds;
 
     AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster) {
@@ -166,7 +166,7 @@ final class AksClusterRuntime {
     }
 
     String webhookUrl(ManagedCluster cluster, String review) {
-        return flociUrl.get() + "/_floci/aks/clusters/" + cluster.getInstanceId() + "/" + review;
+        return flociUrl.apply(cluster) + "/_floci/aks/clusters/" + cluster.getInstanceId() + "/" + review;
     }
 
     /** The kubeconfig format webhook configuration files take: one cluster, the webhook's URL, no credential. */

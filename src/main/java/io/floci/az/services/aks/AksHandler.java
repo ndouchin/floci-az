@@ -147,12 +147,14 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         this.store = ArmResourceStore.create(storageFactory, "aks", ManagedCluster.class, ManagedCluster::armId,
                 key -> true);
         Supplier<String> flociHost = flociHost(hostResolver);
+        boolean linuxHost = hostResolver != null && hostResolver.isLinuxHost();
         this.reconciler = new AksReconciler(store, clusterManager, versions,
                 new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster(),
                         new AksClusterRuntime.Options(
-                                () -> "http://" + HostLiterals.forUrl(flociHost.get()) + ":" + config.port(),
+                                cluster -> "http://" + HostLiterals.forUrl(flociUrlHost(clusterManager, cluster,
+                                        flociHost.get(), linuxHost)) + ":" + config.port(),
                                 config.services().aks().entra().webhookCacheTtlSeconds(),
-                                cluster -> flociAddress(clusterManager, cluster, flociHost.get()),
+                                cluster -> flociAddress(clusterManager, cluster, flociHost.get(), linuxHost),
                                 config.port(),
                                 () -> config.tls().enabled() ? TlsConfigSource.currentCertPem : null,
                                 config.services().aks().workloadIdentity().entraMode()
@@ -173,14 +175,32 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     }
 
     /**
-     * floci-az's IP address as the cluster's pods reach it: the host containers use when it is an address, else what
-     * that name resolves to inside the cluster's server container ({@code host.docker.internal}).
+     * floci-az's IP address as the cluster's containers and pods reach it: the address containers use when it is one
+     * (floci-az in a container); on a Linux host, the gateway of the cluster's own network, the host on the same
+     * bridge; else what the name resolves to inside the cluster's server ({@code host.docker.internal} on Docker
+     * Desktop).
      */
-    private static String flociAddress(AksClusterManager manager, ManagedCluster cluster, String host) {
+    private static String flociAddress(AksClusterManager manager, ManagedCluster cluster, String host,
+                                       boolean linuxHost) {
         if (host.matches("[0-9.]+") || host.indexOf(':') >= 0) {
             return host;
         }
+        if (linuxHost) {
+            Optional<String> gateway = manager.networkGateway(cluster);
+            if (gateway.isPresent()) {
+                return gateway.get();
+            }
+        }
         return manager.resolveInServer(cluster, host).orElse(null);
+    }
+
+    /** The host in the webhook URLs: an address when one is known before the server runs, else the name. */
+    private static String flociUrlHost(AksClusterManager manager, ManagedCluster cluster, String host,
+                                       boolean linuxHost) {
+        if (host.matches("[0-9.]+") || host.indexOf(':') >= 0 || !linuxHost) {
+            return host;
+        }
+        return manager.networkGateway(cluster).orElse(host);
     }
 
     @PostConstruct

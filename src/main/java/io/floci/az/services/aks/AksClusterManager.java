@@ -369,6 +369,15 @@ public class AksClusterManager {
     }
 
     /**
+     * The gateway of the cluster's network, creating the network first: the Docker host on the same bridge as the
+     * cluster's containers, which reach floci-az there when it runs natively on a Linux host.
+     */
+    public Optional<String> networkGateway(ManagedCluster cluster) {
+        lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
+        return lifecycleManager.networkGateway(networkName(cluster));
+    }
+
+    /**
      * The IPv4 address {@code host} resolves to inside the cluster's server container: its {@code /etc/hosts} first
      * (the {@code host-gateway} entry on Linux), then DNS (Docker Desktop's {@code host.docker.internal}).
      */

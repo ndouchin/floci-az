@@ -1010,6 +1010,21 @@ public class ContainerLifecycleManager {
         LOG.debugv("Connected container {0} to network {1}", containerId, network);
     }
 
+    /** The gateway address of {@code network}: the Docker host as the containers on that network reach it. */
+    public Optional<String> networkGateway(String network) {
+        try {
+            Network inspected = dockerClient.inspectNetworkCmd().withNetworkId(network).exec();
+            if (inspected.getIpam() == null || inspected.getIpam().getConfig() == null) {
+                return Optional.empty();
+            }
+            return inspected.getIpam().getConfig().stream().map(Network.Ipam.Config::getGateway)
+                    .filter(gateway -> gateway != null && !gateway.isBlank() && gateway.indexOf(':') < 0)
+                    .findFirst();
+        } catch (NotFoundException e) {
+            return Optional.empty();
+        }
+    }
+
     /** Connects a container to one more network at a fixed IPv4 address, which needs a network with a subnet. */
     public void connectToNetwork(String containerId, String network, String ipv4Address) {
         dockerClient.connectToNetworkCmd()

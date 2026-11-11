@@ -94,13 +94,17 @@ final class KubeconfigClient {
     }
 
     JsonNode get(String path) throws Exception {
+        return MAPPER.readTree(text(path));
+    }
+
+    String text(String path) throws Exception {
         HttpResponse<String> response = http.send(HttpRequest.newBuilder(URI.create(server + path))
                 .timeout(Duration.ofSeconds(10)).GET().build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
             throw new IllegalStateException("GET " + path + " answered " + response.statusCode() + ": "
                     + response.body());
         }
-        return MAPPER.readTree(response.body());
+        return response.body();
     }
 
     int send(String method, String path, String json) throws Exception {

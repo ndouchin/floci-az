@@ -308,6 +308,7 @@ class AksDockerTest {
         AksTestPolling.until(Duration.ofMinutes(3), () -> "Succeeded".equals(
                 phase(kube, "/api/v1/namespaces/default/pods/disk-writer")));
         assertEquals("Bound", phase(kube, PVC_PATH + "/disk-claim"));
+        assertEquals("ok", kube.text("/api/v1/namespaces/default/pods/disk-writer/log").trim());
     }
 
     @Test

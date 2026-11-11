@@ -126,7 +126,7 @@ curl -H "Host: web-demo.apps.demo.eastus.aroapp.io" http://localhost:<port>/
 | `clusterProfile.version` | as requested; default the newest advertised | ARO-RP `setDefaultVersionIfEmpty` |
 | `clusterProfile.resourceGroupId` | as sent, lowercased; default `/subscriptions/{sub}/resourceGroups/aro-{domain}`. The ARO API requires the field; `az aro create` sends `aro-<random id>`, the same id it uses as the domain when none is given | ARO-RP `putorpatch` (lowercases), [azure-cli `aro/custom.py`][azcli] |
 | `clusterProfile.fipsValidatedModules` | default `Disabled` | ARO-RP `api.SetDefaults` |
-| `consoleProfile.url` | `https://console-openshift-console.apps.<full domain>/` | [Connect to an ARO cluster][connect] |
+| `consoleProfile.url` | `https://console-openshift-console.apps.<full domain>/`; in real mode with the router's published HTTPS port, `https://console-openshift-console.apps.<full domain>:<port>/` (see [the web console](#the-web-console)) | [Connect to an ARO cluster][connect] (shape); emulator choice (reachability) |
 | `apiserverProfile.url` | real mode: the cluster's API proxy in floci-az (`https://localhost:<proxy port>/`, see [`oc login`](#oc-login-and-the-oauth-server)); mocked: `https://api.<full domain>:6443/` | spec example (shape); emulator choice (reachability) |
 | `apiserverProfile.ip`, `ingressProfiles[].ip` | the address the ports are published on (`127.0.0.1` locally) | emulator choice |
 | `networkProfile.podCidr` / `serviceCidr` | default `10.128.0.0/14` / `172.30.0.0/16` | [`az aro create` reference][azaro] |
@@ -263,6 +263,58 @@ Only the first and third rows run in tests; the others follow the same rules and
 
 ---
 
+## The web console
+
+On ARO, users "Launch the console URL in a browser and sign in using the kubeadmin credentials"
+([Connect to an ARO cluster][connect]). A real-mode cluster runs OKD 4.19's own console, deployed as the
+console-operator deploys it ([openshift/console-operator `release-4.19`][console-operator] `manifests/` and
+`bindata/assets/`): namespaces `openshift-console`, `openshift-console-user-settings` and `openshift-config-managed`,
+ServiceAccount, ClusterRole and bindings `console` and `console-auth-delegator`, Service `console` (443 to 8443, serving
+certificate from service-ca), Route `console` (reencrypt, `console-openshift-console.apps.<full domain>`, 5 minute
+timeout), Deployment `console` (probes `GET /health` on 8443, requests 10m CPU and 100Mi), the OAuth client `console`
+with its secret, and ConfigMap `openshift-config-managed/console-public`, so `oc whoami --show-console` prints the
+console URL and `GET /console` on the API URL redirects to it. The branding is `azure`, which ARO sets
+([ARO-RP `consolebranding.go`][aro-branding]).
+
+To use it from a browser, both `console-openshift-console.apps.<full domain>` and `api.<full domain>` must resolve to
+the machine floci-az and the cluster's ports are on. ARO's default `<domain>.<location>.aroapp.io` does not resolve, so
+create the cluster with a domain that does: a `clusterProfile.domain` with a dot is used as is, as on ARO, and
+`*.127.0.0.1.nip.io` resolves to `127.0.0.1`.
+
+```bash
+curl -s -X PUT "$ARM/resourceGroups/rg/providers/Microsoft.RedHatOpenShift/openShiftClusters/demo?api-version=2025-07-25" \
+  -H "Content-Type: application/json" \
+  -d '{"location":"eastus","properties":{"clusterProfile":{"domain":"demo.127.0.0.1.nip.io","version":"4.19.0"}}}'
+# once Succeeded: open consoleProfile.url, e.g. https://console-openshift-console.apps.demo.127.0.0.1.nip.io:7602/,
+# accept the router's and the API's certificates, log in as kubeadmin with the listCredentials password
+```
+
+The login page is the OAuth server's on `https://api.<full domain>:<proxy port>`. Measured on the amd64 runner: the
+console was available about 10 seconds after the cluster was `Succeeded` (the image, 149 MB compressed, was pulled
+from quay.io by the cluster), and the login as `kube:admin`, API calls through the console and logout (which revokes
+the token) all worked. The design spike measured a 19 MB working set for the console after one login.
+
+How it differs from a real cluster:
+
+- **The bridge runs off-cluster against floci-az's API proxy**, with `--k8s-mode=off-cluster` and
+  `--k8s-mode-off-cluster-service-account-bearer-token-file`, which upstream labels "DEV ONLY": in-cluster mode would
+  send the user's `sha256~` token to MicroShift's API server, which cannot validate it. The pod resolves
+  `api.<full domain>` to the address the cluster reaches floci-az at, through `hostAliases`.
+- **It does not hold readiness back.** A cluster is `Succeeded` without waiting for the console; floci-az logs when
+  the console is available, or once when it is not after `console.ready-timeout-seconds`. Whether real ARO reports
+  `Succeeded` only once its console is available was not verified.
+- **amd64 only.** The OKD 4.19 console image and `quay.io/openshift/origin-console` have no arm64 build, so the
+  console is off by default on an arm64 Docker daemon; set `console.image` to an arm64 build, or `console.enabled=true`
+  to try the amd64 image under emulation (not tested).
+- **Pages that need APIs MicroShift lacks show partial data or errors**: projects (`project.openshift.io`), cluster
+  operators and settings beyond `ClusterVersion`, `Infrastructure` and `Ingress`, monitoring, dynamic plugins
+  (`console.openshift.io`). Which pages are affected was not surveyed page by page.
+- **Without the OAuth server** (`oauth.enabled=false`), the console has no login page: it runs with
+  `--user-auth=disabled` and its ServiceAccount's token (also "DEV ONLY" upstream), bound to `cluster-admin`, so every
+  visitor acts as `system:serviceaccount:openshift-console:console`.
+
+---
+
 ## Configuration
 
 | Key (`floci-az.services.aro.*`) | Default | |
@@ -278,6 +330,9 @@ Only the first and third rows run in tests; the others follow the same rules and
 | `keep-running-on-shutdown` | `false` | |
 | `proxy-base-port` / `proxy-max-port` | `7700` / `7799` | host ports of the API proxies, one per cluster, bound by floci-az itself |
 | `oauth.enabled` | `true` | `false`: new clusters get no API proxy and no OAuth server; `apiserverProfile.url` is MicroShift's published port and `oc login` fails. Clusters keep what they were created with |
+| `console.enabled` | unset | unset: the console runs when the Docker daemon is amd64, and on arm64 only when `console.image` is changed. Decided when a cluster is created |
+| `console.image` | `quay.io/okd/scos-content@sha256:ba8cac19...` | OKD 4.19.0-okd-scos.17's console (`oc adm release info quay.io/okd/scos-release:4.19.0-okd-scos.17 --image-for=console`), pulled by the cluster |
+| `console.ready-timeout-seconds` | `600` | when floci-az logs that a console is still not available |
 | `oauth.access-token-max-age-seconds` | `86400` | lifetime of the tokens the OAuth server issues ([`oauth-configuring-internal-oauth.adoc`][ocp-oauth-config]: "By default, tokens are only valid for 24 hours") |
 
 ### Persistence and restart
@@ -305,7 +360,7 @@ no OAuth server, and the log says so at startup; recreate it to get `oc login`.
   OKD version, not the `4.19.x` the ARM resource echoes. There are no cluster upgrades.
 - **kubeadmin only.** `oc login -u kubeadmin` works through floci-az's OAuth server (see
   [`oc login`](#oc-login-and-the-oauth-server)); there are no other identity providers and no OAuth API objects.
-- **No console.** `consoleProfile.url` has ARO's shape; nothing serves it.
+- **Console on amd64, with gaps.** See [the web console](#the-web-console).
 - **Few OpenShift APIs.** MicroShift serves `route.openshift.io` and `security.openshift.io` (Routes and SCCs). The
   `ClusterVersion`, `Infrastructure` and `Ingress` objects are static. There is no `project.openshift.io`, no
   `config.openshift.io` beyond those three, no `operator.openshift.io`, no image registry, builds, monitoring or
@@ -329,6 +384,7 @@ no OAuth server, and the log says so at startup; recreate it to get `oc login`.
 - Which `oc` release first asks for a SelfSubjectReview before `users/~` (oc commit `a9e0887fbb`, 2023, about 4.15);
   both are served for kubeadmin.
 - floci-az in Docker, a remote Docker daemon and Docker Desktop with the API proxy (see the table above).
+- The console without the OAuth server (`oauth.enabled=false`) was checked by unit tests only.
 
 [spec]: https://github.com/Azure/azure-rest-api-specs/tree/main/specification/redhatopenshift/resource-manager/Microsoft.RedHatOpenShift/OpenShiftClusters/stable/2025-07-25
 [arorp-frontend]: https://github.com/Azure/ARO-RP/tree/master/pkg/frontend
@@ -353,3 +409,5 @@ no OAuth server, and the log says so at startup; recreate it to get `oc login`.
 [oauth-server]: https://github.com/openshift/oauth-server/tree/release-4.19
 [oauth-apiserver-user]: https://github.com/openshift/oauth-apiserver/blob/release-4.19/pkg/user/apiserver/registry/user/etcd/etcd.go
 [cao-metadata]: https://github.com/openshift/cluster-authentication-operator/blob/release-4.19/pkg/controllers/metadata/metadata_controller.go
+[console-operator]: https://github.com/openshift/console-operator/tree/release-4.19
+[aro-branding]: https://github.com/Azure/ARO-RP/blob/master/pkg/cluster/consolebranding.go

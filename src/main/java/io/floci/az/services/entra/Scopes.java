@@ -27,6 +27,37 @@ final class Scopes {
         return first;
     }
 
+    /**
+     * The audience of a delegated access token: the API named by the first scope that is not an OIDC one
+     * ({@code {resource}/.default} or {@code {resource}/{permission}} gives {@code {resource}}), or {@code fallback}
+     * when no scope names a resource (only OIDC scopes, or a bare permission such as {@code User.Read}).
+     */
+    static String delegatedAudience(String scope, String fallback) {
+        for (String value : values(scope)) {
+            if (OIDC_RESERVED.contains(value)) {
+                continue;
+            }
+            String resource = resourceOf(value);
+            if (resource != null) {
+                return resource;
+            }
+        }
+        return fallback;
+    }
+
+    /** {@code {resource}/{permission}} gives {@code {resource}}; a value with no permission segment is the resource. */
+    private static String resourceOf(String scope) {
+        int slash = scope.lastIndexOf('/');
+        if (slash <= 0) {
+            return null;
+        }
+        int scheme = scope.indexOf("://");
+        if (scheme >= 0 && slash <= scheme + 2) {
+            return scope;
+        }
+        return scope.substring(0, slash);
+    }
+
     /** Delegated access tokens retain OIDC consent so UserInfo can enforce it. */
     static String delegatedScopes(String scope) {
         if (scope == null || scope.isBlank()) {

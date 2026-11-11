@@ -23,6 +23,19 @@ public record TokenRequest(Map<String, String> form, String tenantId, String dir
                            String clientId, String appId, String clientObjectId, String issuer,
                            String scope, long lifetimeSeconds, boolean clientCredentialPresent) {
 
+    /**
+     * The {@code aud} of a delegated access token for {@code requestedScope}: the v1.0 {@code resource} when the
+     * v1.0 endpoint got one, else the API the scope names; with no API named, the client id at v2.0 and the base
+     * URL at v1.0.
+     */
+    public String delegatedAudience(String requestedScope) {
+        String resource = form.get("resource");
+        if (!v2 && resource != null && !resource.isBlank()) {
+            return resource;
+        }
+        return Scopes.delegatedAudience(requestedScope, v2 ? appId : baseUrl);
+    }
+
     /** The {@code ver} claim: {@code "2.0"} or {@code "1.0"}. */
     public String tokenVersion() {
         return v2 ? "2.0" : "1.0";

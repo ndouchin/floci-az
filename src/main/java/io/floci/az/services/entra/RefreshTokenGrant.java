@@ -71,7 +71,8 @@ public class RefreshTokenGrant implements GrantHandler {
             return responses.error(AadstsError.REFRESH_TOKEN_INVALID);
         }
 
-        String access = issuer.issue(new TokenIssuer.TokenSpec(request.tenantId(), request.issuer(), request.appId(),
+        String access = issuer.issue(new TokenIssuer.TokenSpec(request.tenantId(), request.issuer(),
+                request.delegatedAudience(scope),
                 user.id(), user.id(), request.appId(), Scopes.delegatedScopes(scope), request.tokenVersion(), null,
                 request.lifetimeSeconds()), TokenIssuer.userClaims(request.tokenVersion(), user.userPrincipalName()));
         String idToken = Scopes.values(scope).contains("openid") ? issuer.issueIdToken(new TokenIssuer.TokenSpec(

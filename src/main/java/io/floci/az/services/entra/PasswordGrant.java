@@ -61,7 +61,7 @@ public class PasswordGrant implements GrantHandler {
         }
         String userOid = user == null ? TokenIssuer.deterministicGuid(username) : user.id();
         String principalName = user == null ? username : user.userPrincipalName();
-        String audience = request.v2() ? request.appId() : Scopes.firstScope(request.scope(), request.baseUrl());
+        String audience = request.delegatedAudience(request.scope());
         String scp = Scopes.normalize(request.scope());
         String token = tokenIssuer.issue(new TokenIssuer.TokenSpec(
                 request.tenantId(), request.issuer(), audience, userOid, userOid, request.appId(),

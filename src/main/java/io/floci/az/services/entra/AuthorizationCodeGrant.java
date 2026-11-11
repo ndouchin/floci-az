@@ -87,7 +87,7 @@ public class AuthorizationCodeGrant implements GrantHandler {
             return responses.error(AadstsError.MISSING_CLIENT_CREDENTIAL);
         }
         String scp = Scopes.normalize(authCode.scope());
-        String accessAudience = request.v2() ? appId : Scopes.firstScope(authCode.scope(), request.baseUrl());
+        String accessAudience = request.delegatedAudience(authCode.scope());
         String accessToken = tokenIssuer.issue(new TokenIssuer.TokenSpec(
                 request.tenantId(), request.issuer(), accessAudience, user.id(), user.id(), appId,
                 Scopes.delegatedScopes(authCode.scope()), request.tokenVersion(), null, request.lifetimeSeconds()),

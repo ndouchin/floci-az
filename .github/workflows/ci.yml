@@ -34,7 +34,9 @@ jobs:
   test:
     name: Build and Test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # AksDockerTest runs a k3s server and four agent nodes (image pulls plus about 90 s); the suite took
+    # 14 to 19 minutes with it.
+    timeout-minutes: 30
     # Drafts skip the suite to spare runners; it runs once the PR is ready for review.
     # Written on the job rather than as a gate job so it costs no runner. Pushes to main
     # always run; `closed` and `edited` are excluded so widening the trigger types cannot

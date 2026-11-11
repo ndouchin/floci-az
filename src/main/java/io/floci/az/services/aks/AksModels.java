@@ -32,6 +32,21 @@ public class AksModels {
         private String fqdn;
         private String nodeResourceGroup;
         private Boolean disableLocalAccounts;
+        private AadProfile aadProfile;
+        /** {@code oidcIssuerProfile.enabled}; null for a record from before it was typed, which has no issuer. */
+        private Boolean oidcIssuerEnabled;
+        /** The issuer URL, generated once with the cluster's OIDC key and kept for good. */
+        private String oidcIssuerUrl;
+        /** The JWKS the API server signs service account tokens with, read after it is ready. */
+        private String serviceAccountJwks;
+        /** {@code securityProfile.workloadIdentity.enabled}. */
+        private Boolean workloadIdentityEnabled;
+        /** {@code emulated}, {@code servicelb} or {@code off}; null for a cluster created before, which keeps servicelb. */
+        private String loadBalancerMode;
+        /** The load balancers floci-az runs for the cluster's Services of type LoadBalancer. */
+        private List<LoadBalancerRecord> loadBalancers;
+        /** The Workload Identity webhook's CA and serving certificate, generated once; null when never enabled. */
+        private WebhookCertificates workloadIdentityWebhookCertificates;
         private NetworkProfile networkProfile;
         /** Request objects the emulator stores and echoes without acting on them (aadProfile, oidcIssuerProfile...). */
         private Map<String, Object> echoedProperties;
@@ -44,6 +59,8 @@ public class AksModels {
         private Integer hostPort;
         /** Image the k3s server container was created from. */
         private String serverImage;
+        /** Hash of the arguments the k3s server runs with; null for a server recorded before it was kept. */
+        private String serverArgsHash;
         /** Shared secret agents join the server with; kept so a restored or upgraded server accepts them. */
         private String clusterToken;
         /** Base64-encoded certificate authority data from the cluster. */
@@ -101,6 +118,57 @@ public class AksModels {
             this.disableLocalAccounts = disableLocalAccounts;
         }
 
+        public AadProfile getAadProfile() { return aadProfile; }
+        public void setAadProfile(AadProfile aadProfile) { this.aadProfile = aadProfile; }
+
+        public Boolean getOidcIssuerEnabled() { return oidcIssuerEnabled; }
+        public void setOidcIssuerEnabled(Boolean oidcIssuerEnabled) { this.oidcIssuerEnabled = oidcIssuerEnabled; }
+
+        public String getOidcIssuerUrl() { return oidcIssuerUrl; }
+        public void setOidcIssuerUrl(String oidcIssuerUrl) { this.oidcIssuerUrl = oidcIssuerUrl; }
+
+        public String getServiceAccountJwks() { return serviceAccountJwks; }
+        public void setServiceAccountJwks(String serviceAccountJwks) { this.serviceAccountJwks = serviceAccountJwks; }
+
+        public Boolean getWorkloadIdentityEnabled() { return workloadIdentityEnabled; }
+        public void setWorkloadIdentityEnabled(Boolean workloadIdentityEnabled) {
+            this.workloadIdentityEnabled = workloadIdentityEnabled;
+        }
+
+        public WebhookCertificates getWorkloadIdentityWebhookCertificates() {
+            return workloadIdentityWebhookCertificates;
+        }
+
+        public void setWorkloadIdentityWebhookCertificates(WebhookCertificates certificates) {
+            this.workloadIdentityWebhookCertificates = certificates;
+        }
+
+        public String getLoadBalancerMode() { return loadBalancerMode; }
+        public void setLoadBalancerMode(String loadBalancerMode) { this.loadBalancerMode = loadBalancerMode; }
+
+        public List<LoadBalancerRecord> getLoadBalancers() { return loadBalancers; }
+        public void setLoadBalancers(List<LoadBalancerRecord> loadBalancers) { this.loadBalancers = loadBalancers; }
+
+        public List<LoadBalancerRecord> loadBalancers() {
+            if (loadBalancers == null) {
+                loadBalancers = new ArrayList<>();
+            }
+            return loadBalancers;
+        }
+
+        public boolean oidcIssuerEnabled() {
+            return Boolean.TRUE.equals(oidcIssuerEnabled) && oidcIssuerUrl != null;
+        }
+
+        public boolean workloadIdentityEnabled() {
+            return Boolean.TRUE.equals(workloadIdentityEnabled) && oidcIssuerEnabled();
+        }
+
+        /** Whether managed Microsoft Entra integration is on. */
+        public boolean entraEnabled() {
+            return aadProfile != null && aadProfile.managed();
+        }
+
         public NetworkProfile getNetworkProfile() { return networkProfile; }
         public void setNetworkProfile(NetworkProfile networkProfile) { this.networkProfile = networkProfile; }
 
@@ -123,6 +191,9 @@ public class AksModels {
 
         public String getServerImage() { return serverImage; }
         public void setServerImage(String serverImage) { this.serverImage = serverImage; }
+
+        public String getServerArgsHash() { return serverArgsHash; }
+        public void setServerArgsHash(String serverArgsHash) { this.serverArgsHash = serverArgsHash; }
 
         public String getClusterToken() { return clusterToken; }
         public void setClusterToken(String clusterToken) { this.clusterToken = clusterToken; }
@@ -178,6 +249,113 @@ public class AksModels {
             return String.format(
                 "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
                 subscriptionId, resourceGroup, name);
+        }
+    }
+
+    /**
+     * The load balancer of one Service: its addresses, the appliance container holding them, the host ports it
+     * publishes, the backends it last forwarded to, and whether it was reported ensured.
+     */
+    @RegisterForReflection
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class LoadBalancerRecord {
+        private String serviceUid;
+        private String namespace;
+        private String name;
+        private boolean internal;
+        private String address;
+        private String applianceName;
+        private Map<String, Integer> hostPorts;
+        private List<String> backends;
+        private boolean ensured;
+        private String firstSeen;
+
+        public String getServiceUid() { return serviceUid; }
+        public void setServiceUid(String serviceUid) { this.serviceUid = serviceUid; }
+
+        public String getNamespace() { return namespace; }
+        public void setNamespace(String namespace) { this.namespace = namespace; }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+
+        public boolean isInternal() { return internal; }
+        public void setInternal(boolean internal) { this.internal = internal; }
+
+        public String getAddress() { return address; }
+        public void setAddress(String address) { this.address = address; }
+
+        public String getApplianceName() { return applianceName; }
+        public void setApplianceName(String applianceName) { this.applianceName = applianceName; }
+
+        public Map<String, Integer> getHostPorts() { return hostPorts == null ? Map.of() : hostPorts; }
+        public void setHostPorts(Map<String, Integer> hostPorts) { this.hostPorts = hostPorts; }
+
+        public List<String> getBackends() { return backends == null ? List.of() : backends; }
+        public void setBackends(List<String> backends) { this.backends = backends; }
+
+        public boolean isEnsured() { return ensured; }
+        public void setEnsured(boolean ensured) { this.ensured = ensured; }
+
+        public String getFirstSeen() { return firstSeen; }
+        public void setFirstSeen(String firstSeen) { this.firstSeen = firstSeen; }
+    }
+
+    /** PEM CA certificate and key and serving certificate and key of the Workload Identity webhook. */
+    @RegisterForReflection
+    public record WebhookCertificates(String caCert, String caKey, String tlsCert, String tlsKey) {
+    }
+
+    /**
+     * {@code ManagedClusterAADProfile}: managed Entra integration, Azure RBAC and the admin groups, plus the deprecated
+     * legacy fields, kept so clients read back what they sent. {@code serverAppSecret} is write-only.
+     */
+    @RegisterForReflection
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class AadProfile {
+        private Boolean managed;
+        private Boolean enableAzureRBAC;
+        private List<String> adminGroupObjectIDs;
+        private String tenantID;
+        private String clientAppID;
+        private String serverAppID;
+        private String serverAppSecret;
+
+        public Boolean getManaged() { return managed; }
+        public void setManaged(Boolean managed) { this.managed = managed; }
+
+        public Boolean getEnableAzureRBAC() { return enableAzureRBAC; }
+        public void setEnableAzureRBAC(Boolean enableAzureRBAC) { this.enableAzureRBAC = enableAzureRBAC; }
+
+        public List<String> getAdminGroupObjectIDs() { return adminGroupObjectIDs; }
+        public void setAdminGroupObjectIDs(List<String> adminGroupObjectIDs) {
+            this.adminGroupObjectIDs = adminGroupObjectIDs;
+        }
+
+        public String getTenantID() { return tenantID; }
+        public void setTenantID(String tenantID) { this.tenantID = tenantID; }
+
+        public String getClientAppID() { return clientAppID; }
+        public void setClientAppID(String clientAppID) { this.clientAppID = clientAppID; }
+
+        public String getServerAppID() { return serverAppID; }
+        public void setServerAppID(String serverAppID) { this.serverAppID = serverAppID; }
+
+        public String getServerAppSecret() { return serverAppSecret; }
+        public void setServerAppSecret(String serverAppSecret) { this.serverAppSecret = serverAppSecret; }
+
+        public boolean managed() {
+            return Boolean.TRUE.equals(managed);
+        }
+
+        public boolean azureRbac() {
+            return Boolean.TRUE.equals(enableAzureRBAC);
+        }
+
+        public List<String> adminGroups() {
+            return adminGroupObjectIDs == null ? List.of() : adminGroupObjectIDs;
         }
     }
 

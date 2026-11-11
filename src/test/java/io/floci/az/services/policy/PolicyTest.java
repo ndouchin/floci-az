@@ -675,11 +675,12 @@ class PolicyTest {
 
     @Test
     void otherMicrosoftAuthorizationResourcesAreNotClaimed() {
-        // Role assignments stay with the generic ARM handler, which does not implement them.
+        // Role assignments are the authorization service's, which refuses one without a role or principal.
         given().contentType("application/json").body("{\"properties\": {}}")
                 .when().put(SUB_SCOPE + AUTH + "/roleAssignments/11111111-1111-1111-1111-111111111111"
                         + "?api-version=2022-04-01")
-                .then().statusCode(404);
+                .then().statusCode(400)
+                .body("error.code", equalTo("InvalidRequestContent"));
 
         // A policy assignment scoped to another Microsoft.Authorization resource is still ours.
         putJson(DEFINITIONS + "/nested", DEFINITION_BODY).statusCode(201);

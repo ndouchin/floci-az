@@ -43,6 +43,19 @@ class UserRealmEndpointTest {
             .body("domain_name", is("contoso.com"));
     }
 
+    /** MSAL Go (kubelogin {@code -l ropc}, azidentity) writes the segment as {@code UserRealm}. */
+    @Test
+    void userRealmMatchesTheCasingMsalGoSends() {
+        given()
+            .queryParam("api-version", "1.0")
+          .when().get("/common/UserRealm/{username}", "dev-user@floci-az.local")
+          .then()
+            .statusCode(200)
+            .contentType(containsString("application/json"))
+            .body("account_type", is("Managed"))
+            .body("domain_name", is("floci-az.local"));
+    }
+
     @Test
     void userRealmIsNotServedUnderASpecificTenant() {
         given()

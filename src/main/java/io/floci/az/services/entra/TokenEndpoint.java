@@ -30,9 +30,11 @@ public class TokenEndpoint implements EntraEndpoint {
 
     /**
      * Client authentication methods the endpoint accepts: a secret in the form, a secret in HTTP
-     * Basic, and a {@code client_assertion} (accepted unverified). Secrets are checked only when
+     * Basic, and a {@code client_assertion}. Secrets are checked only when
      * {@code entra.validate-client-credentials} is on; either way the client is identified from the
-     * form, or from the HTTP Basic user when the form names none.
+     * form, or from the HTTP Basic user when the form names none. An assertion is verified against
+     * the federated identity credentials of a client that has them (a user-assigned managed
+     * identity), and accepted unverified for any other client.
      */
     private static final List<String> AUTH_METHODS =
             List.of("client_secret_post", "client_secret_basic", "private_key_jwt");
@@ -43,17 +45,22 @@ public class TokenEndpoint implements EntraEndpoint {
     private final EntraResponses responses;
     private final ClientAuthenticator authenticator;
     private final Map<String, GrantHandler> grants;
+    private final Instance<FederatedIdentities> federatedIdentities;
+    private final FederatedAssertions assertions;
 
     @Inject
     public TokenEndpoint(EmulatorConfig config, DirectoryReader directory, IssuerFactory issuers,
                          EntraResponses responses, ClientAuthenticator authenticator,
-                         Instance<GrantHandler> grantHandlers) {
+                         Instance<GrantHandler> grantHandlers, Instance<FederatedIdentities> federatedIdentities,
+                         FederatedAssertions assertions) {
         this.config = config;
         this.directory = directory;
         this.issuers = issuers;
         this.responses = responses;
         this.authenticator = authenticator;
         this.grants = indexByGrantType(grantHandlers);
+        this.federatedIdentities = federatedIdentities;
+        this.assertions = assertions;
     }
 
     private static Map<String, GrantHandler> indexByGrantType(Iterable<GrantHandler> handlers) {
@@ -94,12 +101,50 @@ public class TokenEndpoint implements EntraEndpoint {
             return responses.error(AadstsError.UNSUPPORTED_GRANT_TYPE, grantType);
         }
         ClientCredentials credentials = ClientCredentials.from(form, authorizationHeader(request));
+        Optional<FederatedIdentities.FederatedIdentity> federated = credentials.assertion()
+                ? federatedIdentity(request.directoryTenantId(), credentials.clientId()) : Optional.empty();
+        if (federated.isPresent()) {
+            Optional<FederatedAssertions.Rejection> refused =
+                    assertions.verify(form.get("client_assertion"), federated.get());
+            if (refused.isPresent()) {
+                return responses.error(refused.get().error(), refused.get().args());
+            }
+            return grant.handle(federatedTokenRequest(request, form, credentials, federated.get()));
+        }
         Optional<ClientAuthenticator.Rejection> rejection =
                 authenticator.authenticate(credentials, request.tenant(), grant.requiresClientCredential());
         if (rejection.isPresent()) {
             return responses.error(rejection.get().error(), rejection.get().argArray());
         }
         return grant.handle(tokenRequest(request, form, credentials));
+    }
+
+    /**
+     * The federated identity a {@code client_id} names (a user-assigned managed identity). Its assertions are always
+     * verified, whatever {@code entra.validate-client-credentials} says; any other client keeps the permissive path.
+     */
+    private Optional<FederatedIdentities.FederatedIdentity> federatedIdentity(String tenantId, String clientId) {
+        if (clientId == null) {
+            return Optional.empty();
+        }
+        for (FederatedIdentities source : federatedIdentities) {
+            Optional<FederatedIdentities.FederatedIdentity> identity = source.byClientId(tenantId, clientId);
+            if (identity.isPresent()) {
+                return identity;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private TokenRequest federatedTokenRequest(EntraRequest request, Map<String, String> form,
+                                               ClientCredentials credentials,
+                                               FederatedIdentities.FederatedIdentity identity) {
+        return new TokenRequest(form, request.tenantId(), request.directoryTenantId(), request.baseUrl(),
+                request.path().endsWith(V2_PATH), credentials.clientId(), identity.clientId(), identity.objectId(),
+                issuers.issuer(request.baseUrl(), request.tenantId(), false),
+                issuers.issuer(request.baseUrl(), request.tenantId(), true),
+                form.getOrDefault("scope", form.get("resource")), config.services().entra().tokenLifetimeSeconds(),
+                true, identity.extraClaims());
     }
 
     private static String authorizationHeader(EntraRequest request) {
@@ -123,8 +168,9 @@ public class TokenEndpoint implements EntraEndpoint {
                 : TokenIssuer.deterministicGuid(appId);
 
         return new TokenRequest(form, request.tenantId(), directoryTenantId, request.baseUrl(), v2, clientId, appId,
-                clientObjectId, issuers.issuer(request.baseUrl(), request.tenantId(), v2), scope,
+                clientObjectId, issuers.issuer(request.baseUrl(), request.tenantId(), false),
+                issuers.issuer(request.baseUrl(), request.tenantId(), true), scope,
                 config.services().entra().tokenLifetimeSeconds(),
-                credentials.clientSecret() != null || credentials.assertion());
+                credentials.clientSecret() != null || credentials.assertion(), Map.of());
     }
 }

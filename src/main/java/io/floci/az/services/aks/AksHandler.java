@@ -18,6 +18,9 @@ import io.floci.az.core.arm.ArmResources;
 import io.floci.az.core.arm.ArmScope;
 import io.floci.az.core.arm.ResourceIndexContributor;
 import io.floci.az.core.cloud.CloudDefaults;
+import io.floci.az.core.docker.DockerHostResolver;
+import io.floci.az.core.docker.HostLiterals;
+import io.floci.az.core.tls.TlsConfigSource;
 import io.floci.az.core.storage.StorageFactory;
 import io.floci.az.services.aks.AksModels.AgentPoolProfile;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
@@ -34,17 +37,25 @@ import org.jboss.logging.Logger;
 
 import java.io.InputStream;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * HTTP handler for Azure Kubernetes Service (AKS) management-plane requests.
@@ -108,27 +119,111 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     private final ArmResourceStore<ManagedCluster> store;
     private final AksReconciler reconciler;
+    private final AksLoadBalancerAppliances appliances;
+    private final AksLoadBalancerController loadBalancers;
+    private ScheduledExecutorService loadBalancerScheduler;
+    private volatile boolean publicLoadBalancersSeen;
+
+    public AksHandler(EmulatorConfig config,
+                      AksClusterManager clusterManager,
+                      StorageFactory storageFactory,
+                      CloudDefaults defaults) {
+        this(config, clusterManager, storageFactory, defaults, null, null);
+    }
 
     @Inject
     public AksHandler(EmulatorConfig config,
                       AksClusterManager clusterManager,
                       StorageFactory storageFactory,
-                      CloudDefaults defaults) {
+                      CloudDefaults defaults,
+                      DockerHostResolver hostResolver,
+                      AksLoadBalancerAppliances appliances) {
         this.config = config;
+        this.appliances = appliances;
         this.defaults = defaults;
         this.clusterManager = clusterManager;
         this.versions = new AksVersions(config.services().aks().imageRepository(),
                 config.services().aks().defaultImage());
         this.store = ArmResourceStore.create(storageFactory, "aks", ManagedCluster.class, ManagedCluster::armId,
                 key -> true);
+        Supplier<String> flociHost = flociHost(hostResolver);
+        boolean linuxHost = hostResolver != null && hostResolver.isLinuxHost();
         this.reconciler = new AksReconciler(store, clusterManager, versions,
-                new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster()),
+                new AksClusterRuntime(clusterManager, versions, config.services().aks().maxNodesPerCluster(),
+                        new AksClusterRuntime.Options(
+                                cluster -> "http://" + HostLiterals.forUrl(flociUrlHost(clusterManager, cluster,
+                                        flociHost.get(), linuxHost)) + ":" + config.port(),
+                                config.services().aks().entra().webhookCacheTtlSeconds(),
+                                cluster -> flociAddress(clusterManager, cluster, flociHost.get(), linuxHost),
+                                config.port(),
+                                () -> config.tls().enabled() ? TlsConfigSource.currentCertPem : null,
+                                config.services().aks().workloadIdentity().entraMode()
+                                        != EmulatorConfig.AksEntraMode.AUTHORITY,
+                                config.services().aks().workloadIdentity().webhookImage())),
                 Duration.ofSeconds(Math.max(1, config.services().aks().readyTimeoutSeconds())));
+        this.loadBalancers = appliances == null ? null : new AksLoadBalancerController(
+                new AksLoadBalancerKube(clusterManager, Clock.systemUTC()), appliances, new LoadBalancerRecords(),
+                Clock.systemUTC(), () -> config.services().aks().loadBalancer().provisioningDelaySeconds(),
+                config.services().aks().loadBalancer().publicCidr());
+    }
+
+    /** The host cluster containers reach floci-az by, resolved once. */
+    private static Supplier<String> flociHost(DockerHostResolver hostResolver) {
+        AtomicReference<String> resolved = new AtomicReference<>();
+        return () -> resolved.updateAndGet(current -> current != null ? current
+                : hostResolver == null ? "host.docker.internal" : HostLiterals.bare(hostResolver.resolve()));
+    }
+
+    /**
+     * floci-az's IP address as the cluster's containers and pods reach it: the address containers use when it is one
+     * (floci-az in a container); on a Linux host, the gateway of the cluster's own network, the host on the same
+     * bridge; else what the name resolves to inside the cluster's server ({@code host.docker.internal} on Docker
+     * Desktop).
+     */
+    private static String flociAddress(AksClusterManager manager, ManagedCluster cluster, String host,
+                                       boolean linuxHost) {
+        if (host.matches("[0-9.]+") || host.indexOf(':') >= 0) {
+            return host;
+        }
+        if (linuxHost) {
+            Optional<String> gateway = manager.networkGateway(cluster);
+            if (gateway.isPresent()) {
+                return gateway.get();
+            }
+        }
+        return manager.resolveInServer(cluster, host).orElse(null);
+    }
+
+    /** The host in the webhook URLs: an address when one is known before the server runs, else the name. */
+    private static String flociUrlHost(AksClusterManager manager, ManagedCluster cluster, String host,
+                                       boolean linuxHost) {
+        if (host.matches("[0-9.]+") || host.indexOf(':') >= 0 || !linuxHost) {
+            return host;
+        }
+        return manager.networkGateway(cluster).orElse(host);
     }
 
     @PostConstruct
     public void init() {
         dropShadowedClusters();
+        migrateEchoedProfiles();
+    }
+
+    /** Records written before a profile was typed kept it among their echoed properties: type it now. */
+    void migrateEchoedProfiles() {
+        String tenant = config.services().entra().defaultTenantId();
+        for (ArmResourceStore.Stored<ManagedCluster> stored : store.all()) {
+            Map<String, Object> echoed = stored.value().getEchoedProperties();
+            if (echoed != null && (echoed.containsKey("aadProfile") || echoed.containsKey("oidcIssuerProfile")
+                    || echoed.get("securityProfile") instanceof Map<?, ?> security
+                    && security.containsKey("workloadIdentity"))) {
+                store.update(stored.id(), cluster -> {
+                    AksEntra.migrate(cluster);
+                    AksWorkloadIdentity.migrate(cluster, tenant);
+                    return cluster;
+                });
+            }
+        }
     }
 
     /**
@@ -137,6 +232,84 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     void onStart(@Observes StartupEvent event) {
         restorePersistedClusters();
+        startLoadBalancerController();
+    }
+
+    /** Every 3 s, as a cloud controller's resync, the load balancers of each running cluster in the emulated mode. */
+    private void startLoadBalancerController() {
+        if (config.services().aks().mocked() || loadBalancers == null) {
+            return;
+        }
+        AksLoadBalancerMode.parse(config.services().aks().loadBalancer().mode());
+        loadBalancerScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "aks-load-balancers");
+            thread.setDaemon(true);
+            return thread;
+        });
+        loadBalancerScheduler.scheduleWithFixedDelay(this::reconcileLoadBalancers, 3, 3, TimeUnit.SECONDS);
+    }
+
+    void reconcileLoadBalancers() {
+        boolean publicSeen = false;
+        for (ManagedCluster cluster : scanAll()) {
+            publicSeen |= cluster.loadBalancers().stream().anyMatch(record -> !record.isInternal());
+            if (AksLoadBalancerMode.of(cluster) != AksLoadBalancerMode.EMULATED
+                    || !"Succeeded".equals(cluster.getProvisioningState())
+                    || "Stopped".equals(cluster.getPowerState()) || cluster.getContainerId() == null) {
+                continue;
+            }
+            try {
+                Set<String> agents = new HashSet<>();
+                cluster.pools().forEach(pool -> pool.nodes().forEach(node -> agents.add(node.getName())));
+                loadBalancers.reconcile(cluster, agents);
+            } catch (RuntimeException e) {
+                LOG.debugv(e, "Load balancers of AKS cluster {0} not reconciled", cluster.getName());
+            }
+        }
+        if (publicLoadBalancersSeen && !publicSeen) {
+            appliances.removePublicNetworkIfUnused(scanAll());
+        }
+        publicLoadBalancersSeen = publicSeen;
+    }
+
+    /** The load balancer records, kept on each cluster's record. */
+    private final class LoadBalancerRecords implements AksLoadBalancerController.Records {
+
+        @Override
+        public List<AksModels.LoadBalancerRecord> list(ManagedCluster cluster) {
+            return getCluster(clusterId(cluster)).map(current -> List.copyOf(current.loadBalancers()))
+                    .orElse(List.of());
+        }
+
+        @Override
+        public void save(ManagedCluster cluster, AksModels.LoadBalancerRecord record) {
+            store.update(clusterId(cluster), current -> {
+                current.loadBalancers().removeIf(r -> r.getServiceUid().equals(record.getServiceUid()));
+                current.loadBalancers().add(record);
+                return current;
+            });
+        }
+
+        @Override
+        public void release(ManagedCluster cluster, String serviceUid) {
+            store.update(clusterId(cluster), current -> {
+                current.loadBalancers().removeIf(r -> r.getServiceUid().equals(serviceUid));
+                return current;
+            });
+        }
+
+        @Override
+        public Collection<String> publicAddresses() {
+            List<String> addresses = new ArrayList<>();
+            scanAll().forEach(cluster -> cluster.loadBalancers().stream()
+                    .filter(record -> !record.isInternal() && record.getAddress() != null)
+                    .forEach(record -> addresses.add(record.getAddress())));
+            return addresses;
+        }
+
+        private ArmResourceId clusterId(ManagedCluster cluster) {
+            return AksHandler.clusterId(cluster.getSubscriptionId(), cluster.getResourceGroup(), cluster.getName());
+        }
     }
 
     void restorePersistedClusters() {
@@ -174,6 +347,9 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     @PreDestroy
     public void shutdown() {
         reconciler.shutdown();
+        if (loadBalancerScheduler != null) {
+            loadBalancerScheduler.shutdownNow();
+        }
         if (!config.services().aks().mocked()) {
             scanAll().forEach(cluster -> {
                 try {
@@ -193,15 +369,23 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         return config.services().aks().enabled();
     }
 
+    /**
+     * The ARM provider, and the host of the clusters' OIDC issuers, {@code {region}.oic.prod-aks.azure.com}, for
+     * verifiers whose DNS sends it to floci-az.
+     */
     @Override
     public ServiceRoutes routes() {
         return ServiceRoutes.builder()
                 .provider("Microsoft.ContainerService")
+                .host(AksWorkloadIdentity.ISSUER_HOST_SUFFIX)
                 .build();
     }
 
     @Override
     public Response handle(AzureRequest req) {
+        if (req.host() != null && req.host().endsWith(AksWorkloadIdentity.ISSUER_HOST_SUFFIX)) {
+            return issuerDocument(req);
+        }
         String fullPath = req.resourcePath();
         String method = req.method();
 
@@ -230,7 +414,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         String rg = extractResourceGroup(fullPath);
 
         if (tail.matches("managedClusters/[^/]+/listCluster(?:Admin|User)Credential") && "POST".equals(method)) {
-            return handleListCredentials(sub, rg, segment(tail, 1), tail.endsWith("AdminCredential"));
+            return handleListCredentials(req, sub, rg, segment(tail, 1), tail.endsWith("AdminCredential"));
         }
         if (tail.matches("(?i)managedClusters/[^/]+/(?:start|stop)") && "POST".equals(method)) {
             return handlePower(req, sub, rg, segment(tail, 1), segment(tail, 2).equalsIgnoreCase("start"));
@@ -329,6 +513,12 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 .build();
     }
 
+    /** The tenant of the request's subscription, which AKS fills {@code aadProfile.tenantID} with. */
+    private String tenantOf(AzureRequest req) {
+        return req.scope() != null && req.scope().tenantId() != null
+                ? req.scope().tenantId() : config.services().entra().defaultTenantId();
+    }
+
     private ManagedCluster newCluster(String sub, String rg, String clusterName) {
         ManagedCluster cluster = new ManagedCluster();
         cluster.setInstanceId(UUID.randomUUID().toString().replace("-", "").substring(0, 8));
@@ -338,6 +528,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         cluster.setCreatedAt(Instant.now());
         cluster.setPowerState("Running");
         cluster.setClusterToken(randomToken());
+        cluster.setLoadBalancerMode(AksLoadBalancerMode.parse(config.services().aks().loadBalancer().mode()).value());
         return cluster;
     }
 
@@ -375,6 +566,10 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (props.has("disableLocalAccounts")) {
             cluster.setDisableLocalAccounts(props.path("disableLocalAccounts").asBoolean());
         }
+        if (props.hasNonNull("aadProfile")) {
+            cluster.setAadProfile(AksEntra.apply(cluster.getAadProfile(), props.path("aadProfile"), tenantOf(req)));
+        }
+        AksWorkloadIdentity.apply(cluster, exists, props, tenantOf(req));
         cluster.setEchoedProperties(echoedProperties(cluster.getEchoedProperties(), props));
 
         if (!exists && poolRequests.isEmpty()) {
@@ -893,21 +1088,28 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
     /**
      * The kubeconfig of the cluster's user or admin credential. Without Microsoft Entra integration both carry a
      * cluster-admin client certificate, as on AKS; {@code disableLocalAccounts} refuses the admin one with the error
-     * AKS returns.
+     * AKS returns, and the user one too when Entra integration is off ({@code local-accounts.md}: "any attempt to
+     * authenticate with user or admin credentials will fail").
      */
-    private Response handleListCredentials(String sub, String rg, String clusterName, boolean admin) {
+    private Response handleListCredentials(AzureRequest req, String sub, String rg, String clusterName,
+                                           boolean admin) {
         Optional<ManagedCluster> found = getCluster(clusterId(sub, rg, clusterName));
         if (found.isEmpty()) {
             return notFound("Managed cluster '" + clusterName + "' not found.");
         }
         ManagedCluster cluster = found.get();
-        if (admin && cluster.localAccountsDisabled()) {
+        if (cluster.localAccountsDisabled() && (admin || !cluster.entraEnabled())) {
             return ArmErrors.error(400, "BadRequest", "Getting static credential is not allowed because this"
                     + " cluster is set to disable local accounts.");
         }
         AksKubeconfig.Role role = admin ? AksKubeconfig.Role.ADMIN : AksKubeconfig.Role.USER;
         String kubeconfig;
-        if (cluster.getCaData() != null && cluster.getClientCertificateData() != null
+        if (!admin && cluster.entraEnabled()) {
+            if (cluster.getCaData() == null && !config.services().aks().mocked()) {
+                return credentialsNotAvailable(cluster);
+            }
+            kubeconfig = entraKubeconfig(req, cluster);
+        } else if (cluster.getCaData() != null && cluster.getClientCertificateData() != null
                 && cluster.getClientKeyData() != null && cluster.getEndpoint() != null) {
             kubeconfig = AksKubeconfig.of(cluster, role);
         } else if (config.services().aks().mocked()) {
@@ -920,6 +1122,37 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 "name", role.credentialName(),
                 "value", kubeconfig)));
         return Response.ok(result).type("application/json").build();
+    }
+
+    /**
+     * The Entra {@code clusterUser} kubeconfig: kubelogin exec by default, the legacy auth-provider form for
+     * {@code format=azure}. With {@code aks.entra.kubeconfig-floci-authority} the exec form names floci-az's HTTPS
+     * base URL as authority, so kubelogin signs in here without editing the kubeconfig.
+     */
+    private String entraKubeconfig(AzureRequest req, ManagedCluster cluster) {
+        String tenant = cluster.getAadProfile().getTenantID() != null ? cluster.getAadProfile().getTenantID()
+                : tenantOf(req);
+        String environment = kubeloginEnvironment(req);
+        String format = req.queryParams() == null ? null : req.queryParams().get("format");
+        if ("azure".equalsIgnoreCase(format)) {
+            return AksKubeconfig.entraAuthProvider(cluster, tenant, environment);
+        }
+        String authority = null;
+        if (config.services().aks().entra().kubeconfigFlociAuthority()) {
+            String base = RequestUrls.resolveBaseUrl(req, config);
+            authority = (base.startsWith("http://") ? "https://" + base.substring("http://".length()) : base) + "/";
+        }
+        return AksKubeconfig.entraExec(cluster, tenant, environment, authority);
+    }
+
+    /** kubelogin's {@code --environment} for the request's cloud (go-autorest environment names). */
+    private static String kubeloginEnvironment(AzureRequest req) {
+        String cloud = req.scope() == null || req.scope().cloud() == null ? "" : req.scope().cloud().name();
+        return switch (cloud) {
+            case "AzureUSGovernment" -> "AzureUSGovernmentCloud";
+            case "AzureChinaCloud" -> "AzureChinaCloud";
+            default -> "AzurePublicCloud";
+        };
     }
 
     /**
@@ -1048,6 +1281,33 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     // ── Storage helpers ────────────────────────────────────────────────────────
 
+    /** A cluster's OIDC issuer document, asked for on the AKS issuer host. */
+    private Response issuerDocument(AzureRequest req) {
+        if (!"GET".equals(req.method())) {
+            return methodNotAllowed();
+        }
+        String region = req.host().substring(0, req.host().length() - AksWorkloadIdentity.ISSUER_HOST_SUFFIX.length());
+        return AksOidcIssuers.document(scanAll(), region, req.resourcePath())
+                .map(document -> Response.ok(document).type("application/json").build())
+                .orElseGet(() -> notFound("No OIDC issuer document at " + req.resourcePath()));
+    }
+
+    /** Every cluster. */
+    public List<ManagedCluster> clusters() {
+        return scanAll();
+    }
+
+    /** The cluster with {@code instanceId}, which names its containers and its webhook routes. */
+    public Optional<ManagedCluster> clusterByInstanceId(String instanceId) {
+        return store.all().stream().map(ArmResourceStore.Stored::value)
+                .filter(cluster -> instanceId != null && instanceId.equals(cluster.getInstanceId()))
+                .findFirst();
+    }
+
+    Optional<ManagedCluster> findCluster(String sub, String rg, String clusterName) {
+        return getCluster(clusterId(sub, rg, clusterName));
+    }
+
     private Optional<ManagedCluster> getCluster(ArmResourceId id) {
         return store.get(id).map(ArmResourceStore.Stored::value);
     }
@@ -1087,6 +1347,16 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
                 : "MC_" + cluster.getResourceGroup() + "_" + cluster.getName() + "_" + cluster.getLocation());
         if (cluster.getDisableLocalAccounts() != null) {
             props.put("disableLocalAccounts", cluster.getDisableLocalAccounts());
+        }
+        if (cluster.getAadProfile() != null) {
+            props.put("aadProfile", AksEntra.toArm(cluster.getAadProfile()));
+        }
+        props.put("oidcIssuerProfile", AksWorkloadIdentity.issuerProfile(cluster));
+        Object echoedSecurity = cluster.getEchoedProperties() == null ? null
+                : cluster.getEchoedProperties().get("securityProfile");
+        Map<String, Object> security = AksWorkloadIdentity.securityProfile(cluster, echoedSecurity);
+        if (!security.isEmpty()) {
+            props.put("securityProfile", security);
         }
         if (cluster.getNetworkProfile() != null) {
             props.put("networkProfile", networkProfileProperties(cluster.getNetworkProfile()));
@@ -1193,7 +1463,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     private static Map<String, Object> echoedProperties(Map<String, Object> previous, JsonNode props) {
         Map<String, Object> echoed = previous == null ? new LinkedHashMap<>() : new LinkedHashMap<>(previous);
-        for (String field : List.of("aadProfile", "oidcIssuerProfile", "securityProfile", "apiServerAccessProfile",
+        for (String field : List.of("securityProfile", "apiServerAccessProfile",
                 "addonProfiles", "autoUpgradeProfile", "autoScalerProfile", "linuxProfile", "windowsProfile",
                 "workloadAutoScalerProfile", "storageProfile", "ingressProfile", "azureMonitorProfile",
                 "identityProfile", "httpProxyConfig")) {

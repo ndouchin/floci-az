@@ -31,7 +31,8 @@ class RefreshTokenGrantIntegrationTest {
     private static final String TENANT = "00000000-0000-0000-0000-000000000002";
     private static final String TOKEN = "/" + TENANT + "/oauth2/v2.0/token";
     private static final String REDIRECT = "https://app.local/callback";
-    private static final String SCOPE = "openid profile email offline_access api://resource/read";
+    // UserInfo is Microsoft Graph's, so the tests read it with Graph access tokens.
+    private static final String SCOPE = "openid profile email offline_access https://graph.microsoft.com/User.Read";
     private static final String VERIFIER = "a-valid-pkce-verifier-with-at-least-43-characters-long";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

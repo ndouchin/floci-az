@@ -87,9 +87,8 @@ test("MSAL renews a PKCE session from its refresh-token cache", async () => {
   expect(renewed.accessToken === initial.accessToken).toBe(false);
   expect(renewed.account?.homeAccountId).toBe(initial.account?.homeAccountId);
   expect(usedRefreshTokens).toHaveLength(1);
-  const profile = await fetch(`${BASE}/oidc/userinfo`, { headers: { Authorization: `Bearer ${renewed.accessToken}` } });
-  expect(profile.status).toBe(200);
-  expect(initial.idTokenClaims).toHaveProperty("sub", (await profile.json()).sub);
+  const renewedClaims = JSON.parse(Buffer.from(renewed.accessToken.split(".")[1], "base64url").toString("utf8"));
+  expect(initial.idTokenClaims).toHaveProperty("oid", renewedClaims.oid);
   await client.acquireTokenSilent({ account: renewed.account!, scopes: SCOPES, forceRefresh: true });
   expect(usedRefreshTokens).toHaveLength(2);
   expect(usedRefreshTokens[0] === usedRefreshTokens[1]).toBe(false);
@@ -100,6 +99,9 @@ test("MSAL renews a PKCE session from its refresh-token cache", async () => {
   expect(graph.scopes.map((scope) => scope.toLowerCase())).toContain(GRAPH_SCOPE.toLowerCase());
   const graphClaims = JSON.parse(Buffer.from(graph.accessToken.split(".")[1], "base64url").toString("utf8"));
   expect(graphClaims.scp.toLowerCase()).toContain(GRAPH_SCOPE.toLowerCase());
+  const profile = await fetch(`${BASE}/oidc/userinfo`, { headers: { Authorization: `Bearer ${graph.accessToken}` } });
+  expect(profile.status).toBe(200);
+  expect(initial.idTokenClaims).toHaveProperty("sub", (await profile.json()).sub);
   const graphClient = Client.init({
     baseUrl: BASE,
     customHosts: new Set([new URL(BASE).host]),

@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * What runs inside a cluster's containers: an agentless k3s server playing the managed control plane, and one k3s
@@ -21,14 +23,50 @@ final class AksClusterRuntime {
 
     private static final Logger LOG = Logger.getLogger(AksClusterRuntime.class);
 
+    static final String WEBHOOK_DIR = "/etc/floci";
+    static final String AUTHN_CONFIG = WEBHOOK_DIR + "/aks-authn.yaml";
+    static final String AUTHZ_CONFIG = WEBHOOK_DIR + "/aks-authz.yaml";
+    static final String ADMIN_GROUPS_MANIFEST = "floci-aks-admin-groups.yaml";
+
+    /**
+     * What the runtime needs from floci-az itself.
+     *
+     * @param flociUrl               floci-az's plain HTTP base URL as the cluster's containers reach it
+     * @param webhookCacheTtlSeconds how long the API server caches a webhook's answer
+     * @param flociAddress           floci-az's IP address as a cluster's pods reach it, or null when unknown
+     * @param flociPort              floci-az's port (HTTP, and HTTPS when its TLS is on)
+     * @param caPem                  floci-az's CA in PEM, or null when its TLS is off
+     * @param microsoftHostnames     whether pods reach Entra as {@code login.microsoftonline.com}
+     * @param webhookImage           the azure-workload-identity webhook image
+     */
+    record Options(Function<ManagedCluster, String> flociUrl, int webhookCacheTtlSeconds,
+                   Function<ManagedCluster, String> flociAddress, int flociPort, Supplier<String> caPem,
+                   boolean microsoftHostnames, String webhookImage) {
+
+        static Options defaults() {
+            return new Options(cluster -> "http://host.docker.internal:4577", 5, cluster -> null, 4577, () -> null, true,
+                    "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3");
+        }
+    }
+
     private final AksClusterManager manager;
     private final AksVersions versions;
     private final int maxNodesPerCluster;
+    private final Options options;
+    private final Function<ManagedCluster, String> flociUrl;
+    private final int webhookCacheTtlSeconds;
 
     AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster) {
+        this(manager, versions, maxNodesPerCluster, Options.defaults());
+    }
+
+    AksClusterRuntime(AksClusterManager manager, AksVersions versions, int maxNodesPerCluster, Options options) {
         this.manager = manager;
         this.versions = versions;
         this.maxNodesPerCluster = maxNodesPerCluster;
+        this.options = options;
+        this.flociUrl = options.flociUrl();
+        this.webhookCacheTtlSeconds = options.webhookCacheTtlSeconds();
     }
 
     /**
@@ -38,18 +76,180 @@ final class AksClusterRuntime {
      * name agents join by, plus the Docker daemon's host in published mode. The network ranges come last.
      */
     List<String> serverArgs(ManagedCluster cluster) {
+        return serverArgs(cluster, false);
+    }
+
+    /**
+     * @param legacy the arguments of a server created before arguments were recorded: none of the features added since
+     */
+    List<String> serverArgs(ManagedCluster cluster, boolean legacy) {
         List<String> args = new ArrayList<>(List.of("server", "--disable-agent", "--egress-selector-mode=cluster",
                 "--disable=traefik", "--disable=local-storage", "--tls-san=localhost",
                 "--tls-san=" + manager.containerName(cluster)));
         manager.daemonTlsSan().ifPresent(san -> args.add("--tls-san=" + san));
         args.addAll(AksNetwork.serverArgs(cluster.getNetworkProfile()));
+        if (legacy) {
+            return args;
+        }
+        if (AksLoadBalancerMode.of(cluster) != AksLoadBalancerMode.SERVICELB) {
+            args.add("--disable=servicelb");
+        }
+        if (cluster.oidcIssuerEnabled()) {
+            args.addAll(issuerArgs(cluster.getOidcIssuerUrl()));
+        }
+        if (cluster.entraEnabled()) {
+            args.addAll(List.of(
+                    "--kube-apiserver-arg=authentication-token-webhook-config-file=" + AUTHN_CONFIG,
+                    "--kube-apiserver-arg=authentication-token-webhook-version=v1",
+                    "--kube-apiserver-arg=authentication-token-webhook-cache-ttl=" + webhookCacheTtlSeconds + "s"));
+        }
+        if (azureRbac(cluster)) {
+            args.addAll(List.of(
+                    "--kube-apiserver-arg=authorization-mode=Node,RBAC,Webhook",
+                    "--kube-apiserver-arg=authorization-webhook-config-file=" + AUTHZ_CONFIG,
+                    "--kube-apiserver-arg=authorization-webhook-version=v1",
+                    "--kube-apiserver-arg=authorization-webhook-cache-authorized-ttl=" + webhookCacheTtlSeconds + "s",
+                    "--kube-apiserver-arg=authorization-webhook-cache-unauthorized-ttl=" + webhookCacheTtlSeconds
+                            + "s"));
+        }
         return args;
     }
 
-    /** Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates. */
+    /**
+     * Files k3s reads only when it starts (absolute path to content); they count as server arguments. An Entra
+     * cluster's API server gets the kubeconfig of floci-az's token webhook.
+     */
+    Map<String, String> startupFiles(ManagedCluster cluster) {
+        return startupFiles(cluster, false);
+    }
+
+    Map<String, String> startupFiles(ManagedCluster cluster, boolean legacy) {
+        Map<String, String> files = new LinkedHashMap<>();
+        if (legacy) {
+            return files;
+        }
+        if (cluster.entraEnabled()) {
+            files.put(AUTHN_CONFIG, webhookKubeconfig(webhookUrl(cluster, "token-review")));
+        }
+        if (azureRbac(cluster)) {
+            files.put(AUTHZ_CONFIG, webhookKubeconfig(webhookUrl(cluster, "subject-access-review")));
+        }
+        return files;
+    }
+
+    /**
+     * The service account issuer of a cluster with the OIDC issuer: tokens are signed under the AKS-format URL, which
+     * k3s puts first ({@code -=} prepends, so its default issuer stays accepted for tokens issued before), the
+     * discovery document names the AKS-format JWKS URL, and token lifetimes follow AKS: no extended expiration
+     * (from 1.30) and at most 24 hours ({@code use-oidc-issuer.md}).
+     */
+    static List<String> issuerArgs(String issuerUrl) {
+        return List.of(
+                "--kube-apiserver-arg=service-account-issuer-=" + issuerUrl,
+                "--kube-apiserver-arg=service-account-jwks-uri=" + issuerUrl + "openid/v1/jwks",
+                "--kube-apiserver-arg=service-account-extend-token-expiration=false",
+                "--kube-apiserver-arg=service-account-max-token-expiration=24h");
+    }
+
+    /**
+     * Azure RBAC: the authorization webhook comes after Node and RBAC, so a Kubernetes RoleBinding still grants what
+     * it grants and the webhook decides only what RBAC has no opinion on, the union AKS describes
+     * ({@code concepts-cluster-authorization.md}).
+     */
+    private static boolean azureRbac(ManagedCluster cluster) {
+        return cluster.entraEnabled() && cluster.getAadProfile().azureRbac();
+    }
+
+    /** The hash of the arguments a server created before they were recorded runs with. */
+    String legacyServerHash(ManagedCluster cluster) {
+        return AksClusterManager.serverHash(serverArgs(cluster, true), startupFiles(cluster, true));
+    }
+
+    String webhookUrl(ManagedCluster cluster, String review) {
+        return flociUrl.apply(cluster) + "/_floci/aks/clusters/" + cluster.getInstanceId() + "/" + review;
+    }
+
+    /** The kubeconfig format webhook configuration files take: one cluster, the webhook's URL, no credential. */
+    static String webhookKubeconfig(String url) {
+        return """
+                apiVersion: v1
+                kind: Config
+                clusters:
+                - name: floci-az
+                  cluster:
+                    server: %s
+                users:
+                - name: kube-apiserver
+                  user: {}
+                contexts:
+                - name: webhook
+                  context:
+                    cluster: floci-az
+                    user: kube-apiserver
+                current-context: webhook
+                """.formatted(url);
+    }
+
+    /**
+     * Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates, and for an Entra cluster
+     * the ClusterRoleBinding of its admin groups. k3s re-applies a manifest whose content changed, so they are
+     * written again on every reconcile.
+     */
     Map<String, String> manifests(ManagedCluster cluster) {
         Version controlPlane = Version.parse(cluster.getCurrentKubernetesVersion()).orElseGet(versions::defaultVersion);
-        return Map.of(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
+        Map<String, String> manifests = new LinkedHashMap<>();
+        manifests.put(AksStorageManifests.FILE_NAME, AksStorageManifests.manifest(controlPlane));
+        if (cluster.entraEnabled()) {
+            manifests.put(ADMIN_GROUPS_MANIFEST, adminGroupsBinding(cluster));
+        }
+        if (cluster.workloadIdentityEnabled()) {
+            manifests.putAll(AksWorkloadIdentityNetwork.manifests(cluster, options.flociAddress().apply(cluster),
+                    options.flociPort(), options.caPem().get(), options.microsoftHostnames()));
+            if (cluster.getWorkloadIdentityWebhookCertificates() != null) {
+                manifests.put(AksWorkloadIdentityWebhook.MANIFEST, AksWorkloadIdentityWebhook.manifest(
+                        options.webhookImage(), AksWorkloadIdentity.issuerTenant(cluster),
+                        cluster.getWorkloadIdentityWebhookCertificates(),
+                        options.microsoftHostnames() ? null : "https://" + AksWorkloadIdentityNetwork.SERVICE_FQDN + "/"));
+            }
+        }
+        return manifests;
+    }
+
+    /** Whether the cluster still runs the Workload Identity add-on after Workload Identity was turned off. */
+    static boolean workloadIdentityAddonToRemove(ManagedCluster cluster) {
+        return !cluster.workloadIdentityEnabled() && cluster.getWorkloadIdentityWebhookCertificates() != null;
+    }
+
+    /**
+     * The ClusterRoleBinding of {@code adminGroupObjectIDs} to {@code cluster-admin}. Its name is not documented; with
+     * Azure RBAC the admin groups are irrelevant ({@code concepts-identity.md}), so it names no subject, and an empty
+     * list keeps the file in place for k3s instead of leaving a stale binding behind.
+     */
+    static String adminGroupsBinding(ManagedCluster cluster) {
+        List<String> groups = cluster.getAadProfile().azureRbac() ? List.of() : cluster.getAadProfile().adminGroups();
+        StringBuilder yaml = new StringBuilder("""
+                apiVersion: rbac.authorization.k8s.io/v1
+                kind: ClusterRoleBinding
+                metadata:
+                  name: aks-cluster-admin-binding-aad
+                  labels:
+                    kubernetes.azure.com/managed-by: floci-az
+                roleRef:
+                  apiGroup: rbac.authorization.k8s.io
+                  kind: ClusterRole
+                  name: cluster-admin
+                """);
+        if (groups.isEmpty()) {
+            yaml.append("subjects: []\n");
+        } else {
+            yaml.append("subjects:\n");
+            groups.forEach(group -> yaml.append("""
+                    - apiGroup: rbac.authorization.k8s.io
+                      kind: Group
+                      name: "%s"
+                    """.formatted(group)));
+        }
+        return yaml.toString();
     }
 
     List<String> agentArgs(ManagedCluster cluster, AgentPoolProfile pool, String hash, int index,

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,9 +41,35 @@ public class AksClusterManager {
     static final String STORAGE_DIR = "/var/lib/floci-aks-storage";
     static final String ROLE_LABEL = "io.floci.aks.role";
     static final String NODE_LABEL = "io.floci.aks.node";
+    /** Hash of the arguments and start-up files a server container was created with. */
+    static final String SERVER_ARGS_LABEL = "io.floci.aks.server-args";
+
+    /**
+     * What every k3s container runs before k3s. Without br_netfilter on the Docker host, replies between two pods of a
+     * node are bridged past conntrack, so a Service's DNAT is never reversed and same-node Service traffic, cluster DNS
+     * included, times out. Docker loads the module only for features that need it, k3s cannot modprobe it from its
+     * container, and k3s's network policy controller, whose physdev rules load it as a side effect, is off unless the
+     * cluster names a policy engine. A throwaway physdev rule makes the host kernel load it; its chain is removed
+     * before k3s detects its iptables mode from the rules present. A host that cannot load it keeps the cluster.
+     */
+    private static final String K3S_ENTRYPOINT_SCRIPT = """
+            if [ ! -e /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+              iptables -N FLOCI-BR-NETFILTER && {
+                iptables -A FLOCI-BR-NETFILTER -m physdev --physdev-is-bridged -j RETURN
+                iptables -F FLOCI-BR-NETFILTER
+                iptables -X FLOCI-BR-NETFILTER
+              }
+              [ -e /proc/sys/net/bridge/bridge-nf-call-iptables ] \\
+                || echo "floci-az: br_netfilter is not loaded on the Docker host; same-node Services will fail" >&2
+            fi
+            exec /bin/k3s "$@"
+            """;
 
     /** How a server container came to run, which tells whether the cluster kept its CA. */
     enum ServerStart { ADOPTED, RECREATED_ON_VOLUME, CREATED_FRESH }
+
+    /** What to do with the cluster's server container. */
+    enum ServerDecision { ADOPT, REPLACE, CREATE }
 
     private final ContainerBuilder containerBuilder;
     private final ContainerLifecycleManager lifecycleManager;
@@ -74,34 +101,81 @@ public class AksClusterManager {
 
     /**
      * Makes the cluster's k3s server run {@code image} with {@code args}: adopts a surviving container created from
-     * that image, otherwise replaces it on the same data volume (an upgrade or a lost container keeps the cluster's
-     * state and CA), otherwise creates it on a fresh volume. {@code manifests} (file name to content) are dropped
-     * into the k3s auto-deploy directory before a new container starts. Sets the container id, host port, image and
-     * endpoints on {@code cluster}.
+     * that image with those arguments, otherwise replaces it on the same data volume (an upgrade, changed arguments or
+     * a lost container keep the cluster's state and CA), otherwise creates it on a fresh volume. {@code startupFiles}
+     * (absolute path to content) are files k3s reads only when it starts, such as webhook kubeconfigs: they count as
+     * arguments. {@code manifests} (file name to content) are dropped into the k3s auto-deploy directory before a new
+     * container starts. Sets the container id, host port, image, argument hash and endpoints on {@code cluster}.
+     *
+     * @param legacyHash the hash of the arguments a server created before they were recorded runs with; an unlabelled
+     *                   server adopted for a record without a hash is recorded with it, so a feature the record carries
+     *                   that such a server lacks replaces it at the next change
      */
     public ServerStart prepareServer(ManagedCluster cluster, String image, List<String> args,
-                                     Map<String, String> manifests) {
+                                     Map<String, String> startupFiles, Map<String, String> manifests,
+                                     String legacyHash) {
         String name = containerName(cluster);
         lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
         Optional<Container> existing = lifecycleManager.findByName(name);
-        if (existing.isPresent() && image.equals(existing.get().getImage())) {
+        String hash = serverHash(args, startupFiles);
+        ServerDecision decision = serverDecision(existing, image, hash, cluster.getServerArgsHash());
+        if (decision == ServerDecision.ADOPT) {
+            boolean unlabelled = existing.orElseThrow().getLabels() == null
+                    || !existing.get().getLabels().containsKey(SERVER_ARGS_LABEL);
             adoptServer(cluster, existing.get().getId());
             cluster.setServerImage(image);
+            cluster.setServerArgsHash(unlabelled && cluster.getServerArgsHash() == null && legacyHash != null
+                    ? legacyHash : hash);
             return ServerStart.ADOPTED;
         }
         if (existing.isPresent()) {
-            LOG.infov("AKS cluster {0}: replacing k3s server {1} with image {2} on the same data volume",
-                    cluster.getName(), existing.get().getImage(), image);
+            LOG.infov("AKS cluster {0}: replacing k3s server {1} with image {2}{3} on the same data volume",
+                    cluster.getName(), existing.get().getImage(), image,
+                    image.equals(existing.get().getImage()) ? " and new arguments" : "");
             lifecycleManager.stopAndRemove(existing.get().getId(), null);
         }
         releaseHostPort(cluster.getContainerId());
         boolean volumeExisted = lifecycleManager.volumeExists(name);
-        createServer(cluster, image, args, manifests);
+        Map<String, String> files = new LinkedHashMap<>(startupFiles);
+        manifests.forEach((file, content) -> files.put(MANIFESTS_DIR + "/" + file, content));
+        createServer(cluster, image, args, files, hash);
         cluster.setServerImage(image);
+        cluster.setServerArgsHash(hash);
         return volumeExisted ? ServerStart.RECREATED_ON_VOLUME : ServerStart.CREATED_FRESH;
     }
 
-    private void createServer(ManagedCluster cluster, String image, List<String> args, Map<String, String> manifests) {
+    /**
+     * Adopt a container of the same image whose argument label matches. A container without the label was created
+     * before arguments were recorded: it is adopted as it runs while the record names no arguments or the same ones,
+     * and replaced once the record's arguments change.
+     */
+    static ServerDecision serverDecision(Optional<Container> existing, String image, String hash,
+                                         String recordedHash) {
+        if (existing.isEmpty()) {
+            return ServerDecision.CREATE;
+        }
+        if (!image.equals(existing.get().getImage())) {
+            return ServerDecision.REPLACE;
+        }
+        Map<String, String> labels = existing.get().getLabels();
+        String label = labels == null ? null : labels.get(SERVER_ARGS_LABEL);
+        if (label != null) {
+            return label.equals(hash) ? ServerDecision.ADOPT : ServerDecision.REPLACE;
+        }
+        return recordedHash == null || recordedHash.equals(hash) ? ServerDecision.ADOPT : ServerDecision.REPLACE;
+    }
+
+    /** The hash of a server's arguments, in order, and of its start-up files, by path. */
+    static String serverHash(List<String> args, Map<String, String> startupFiles) {
+        StringBuilder text = new StringBuilder();
+        args.forEach(arg -> text.append(arg).append('\n'));
+        new TreeMap<>(startupFiles).forEach((path, content) ->
+                text.append("--- ").append(path).append('\n').append(content).append('\n'));
+        return AksHashes.sha256Hex(text.toString()).substring(0, 32);
+    }
+
+    private void createServer(ManagedCluster cluster, String image, List<String> args, Map<String, String> files,
+                              String hash) {
         String containerName = containerName(cluster);
         LOG.infov("Starting k3s server for AKS cluster {0} using image {1}", cluster.getName(), image);
         // Pulled before the port is reserved, so a slow pull does not hold the reservation.
@@ -117,21 +191,23 @@ public class AksClusterManager {
                     .withName(containerName)
                     .withLabels(identityLabels(cluster))
                     .withLabel(ROLE_LABEL, "server")
+                    .withLabel(SERVER_ARGS_LABEL, hash)
+                    .withEntrypoint(k3sEntrypoint())
                     .withCmd(args)
                     .withEnv("K3S_KUBECONFIG_MODE", "644")
                     .withEnv("K3S_TOKEN", cluster.getClusterToken())
                     .withPortBinding(K3S_API_SERVER_PORT, hostPort)
                     .withNamedVolume(containerName, K3S_DATA_DIR)
                     .withPrimaryNetwork(networkName(cluster))
+                    .withHostDockerInternalOnLinux()
                     .withPrivileged(true)
                     .withLogRotation()
                     .build();
             containerId = lifecycleManager.create(spec);
-            if (!manifests.isEmpty()) {
-                Map<String, byte[]> files = new LinkedHashMap<>();
-                manifests.forEach((file, content) ->
-                        files.put(MANIFESTS_DIR + "/" + file, content.getBytes(StandardCharsets.UTF_8)));
-                lifecycleManager.copyFilesToContainer(containerId, files);
+            if (!files.isEmpty()) {
+                Map<String, byte[]> bytes = new LinkedHashMap<>();
+                files.forEach((path, content) -> bytes.put(path, content.getBytes(StandardCharsets.UTF_8)));
+                lifecycleManager.copyFilesToContainer(containerId, bytes);
             }
             ContainerLifecycleManager.ContainerInfo info = lifecycleManager.startCreated(containerId, spec);
             hostPorts.put(info.containerId(), hostPort);
@@ -200,6 +276,10 @@ public class AksClusterManager {
         return containerDetector.isRunningInContainer() ? networkResolver.resolveNetworkName() : Optional.empty();
     }
 
+    /**
+     * Connects a server or agent container to the network floci-az is on, so the API server reaches its webhooks and
+     * pods reach its Entra when floci-az runs in a container.
+     */
     private void joinEmulatorNetwork(ManagedCluster cluster, String containerId) {
         Optional<String> network = emulatorNetwork().filter(n -> !n.equals(networkName(cluster)));
         if (network.isEmpty() || lifecycleManager.addressOnNetwork(containerId, network.get()).isPresent()) {
@@ -208,8 +288,8 @@ public class AksClusterManager {
         try {
             lifecycleManager.connectToNetwork(containerId, network.get());
         } catch (RuntimeException e) {
-            LOG.warnv("Could not connect the k3s server of AKS cluster {0} to network {1}: {2}", cluster.getName(),
-                    network.get(), e.getMessage());
+            LOG.warnv("Could not connect container {0} of AKS cluster {1} to network {2}: {3}", containerId,
+                    cluster.getName(), network.get(), e.getMessage());
         }
     }
 
@@ -242,6 +322,17 @@ public class AksClusterManager {
             return Optional.of(lifecycleManager.daemonAddress());
         }
         return Optional.empty();
+    }
+
+    /** Writes {@code manifests} (file name to content) into the running server's k3s auto-deploy directory. */
+    public void updateManifests(ManagedCluster cluster, Map<String, String> manifests) {
+        if (cluster.getContainerId() == null || manifests.isEmpty()) {
+            return;
+        }
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        manifests.forEach((file, content) ->
+                files.put(MANIFESTS_DIR + "/" + file, content.getBytes(StandardCharsets.UTF_8)));
+        lifecycleManager.copyFilesToContainer(cluster.getContainerId(), files);
     }
 
     /** True once the API server answers {@code /readyz}, asked from inside the server container. */
@@ -284,6 +375,58 @@ public class AksClusterManager {
     }
 
     /**
+     * Removes the Workload Identity add-on from a running server: its manifest, so k3s stops applying it, and its
+     * objects, found by the add-on's system label.
+     */
+    public void removeWorkloadIdentityAddon(ManagedCluster cluster) {
+        lifecycleManager.execInContainer(cluster.getContainerId(), "rm", "-f",
+                MANIFESTS_DIR + "/" + AksWorkloadIdentityWebhook.MANIFEST);
+        String selector = AksWorkloadIdentityWebhook.SYSTEM_LABEL + "=true";
+        kubectl(cluster, "delete", "mutatingwebhookconfiguration,clusterrole,clusterrolebinding", "-l", selector,
+                "--ignore-not-found");
+        kubectl(cluster, "-n", "kube-system", "delete",
+                "deployment,service,secret,configmap,serviceaccount,role,rolebinding,poddisruptionbudget", "-l",
+                selector, "--ignore-not-found");
+        LOG.infov("AKS cluster {0}: removed the Workload Identity add-on", cluster.getName());
+    }
+
+    /**
+     * The gateway of the cluster's network, creating the network first: the Docker host on the same bridge as the
+     * cluster's containers, which reach floci-az there when it runs natively on a Linux host.
+     */
+    public Optional<String> networkGateway(ManagedCluster cluster) {
+        lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
+        return lifecycleManager.networkGateway(networkName(cluster));
+    }
+
+    /**
+     * The IPv4 address {@code host} resolves to inside the cluster's server container: its {@code /etc/hosts} first
+     * (the {@code host-gateway} entry on Linux), then DNS (Docker Desktop's {@code host.docker.internal}).
+     */
+    public Optional<String> resolveInServer(ManagedCluster cluster, String host) {
+        if (cluster.getContainerId() == null || !host.matches("[A-Za-z0-9.-]+")) {
+            return Optional.empty();
+        }
+        try {
+            ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                    "sh", "-c", "awk '$2==\"" + host + "\"{print $1}' /etc/hosts; nslookup " + host
+                            + " 2>/dev/null | awk '/^Address/{print $NF}'");
+            return result.output().lines().map(String::trim)
+                    .filter(line -> line.matches("\\d+\\.\\d+\\.\\d+\\.\\d+") && !line.startsWith("127."))
+                    .findFirst();
+        } catch (RuntimeException e) {
+            LOG.debugv("AKS cluster {0}: could not resolve {1} in its server: {2}", cluster.getName(), host,
+                    e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** The JWKS the API server publishes for its service account issuer ({@code /openid/v1/jwks}). */
+    public String serviceAccountJwks(ManagedCluster cluster) {
+        return kubectl(cluster, "get", "--raw", "/openid/v1/jwks").trim();
+    }
+
+    /**
      * Runs {@code kubectl} with {@code args} inside the server container.
      *
      * @throws IllegalStateException when kubectl exits non-zero
@@ -297,6 +440,15 @@ public class AksClusterManager {
             throw new IllegalStateException("kubectl " + String.join(" ", args) + " failed: " + result.output().trim());
         }
         return result.output();
+    }
+
+    /** Runs {@code kubectl create -f -} in the server with {@code manifest}, passed through the environment. */
+    public void kubectlCreate(ManagedCluster cluster, String manifest) {
+        ContainerLifecycleManager.ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(),
+                List.of("FLOCI_MANIFEST=" + manifest), "sh", "-c", "printf %s \"$FLOCI_MANIFEST\" | kubectl create -f -");
+        if (result.exitCode() != 0) {
+            throw new IllegalStateException("kubectl create failed: " + result.output().trim());
+        }
     }
 
     // ── Agents ────────────────────────────────────────────────────────────────
@@ -316,7 +468,9 @@ public class AksClusterManager {
         String name = agentContainerName(cluster, spec.nodeName());
         Optional<Container> existing = lifecycleManager.findByName(name);
         if (existing.isPresent() && spec.image().equals(existing.get().getImage())) {
-            return lifecycleManager.adopt(existing.get().getId(), List.of()).containerId();
+            String adopted = lifecycleManager.adopt(existing.get().getId(), List.of()).containerId();
+            joinEmulatorNetwork(cluster, adopted);
+            return adopted;
         }
         existing.ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
         lifecycleManager.ensureImageAvailable(spec.image());
@@ -328,6 +482,7 @@ public class AksClusterManager {
                 .withLabels(identityLabels(cluster))
                 .withLabel(ROLE_LABEL, "agent")
                 .withLabel(NODE_LABEL, spec.nodeName())
+                .withEntrypoint(k3sEntrypoint())
                 .withCmd(spec.args())
                 .withEnv("K3S_URL", "https://" + containerName(cluster) + ":" + K3S_API_SERVER_PORT)
                 .withEnv("K3S_TOKEN", cluster.getClusterToken())
@@ -347,6 +502,7 @@ public class AksClusterManager {
             lifecycleManager.removeIfExists(name);
             throw e;
         }
+        joinEmulatorNetwork(cluster, containerId);
         node.setContainerId(containerId);
         node.setImage(spec.image());
         LOG.infov("Started k3s agent {0} for node {1} of AKS cluster {2}", containerId, spec.nodeName(),
@@ -434,6 +590,12 @@ public class AksClusterManager {
             lifecycleManager.findByName(agentContainerName(cluster, nodeName))
                     .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
         }
+        for (AksModels.LoadBalancerRecord record : cluster.loadBalancers()) {
+            if (record.getApplianceName() != null) {
+                lifecycleManager.findByName(record.getApplianceName())
+                        .ifPresent(c -> lifecycleManager.stopAndRemove(c.getId(), null));
+            }
+        }
         if (cluster.getContainerId() != null) {
             lifecycleManager.stopAndRemove(cluster.getContainerId(), null);
         } else {
@@ -461,6 +623,11 @@ public class AksClusterManager {
         if (hostPort != null) {
             portAllocator.release(hostPort);
         }
+    }
+
+    /** {@link #K3S_ENTRYPOINT_SCRIPT}, which hands the container's command to k3s as its arguments. */
+    static List<String> k3sEntrypoint() {
+        return List.of("/bin/sh", "-c", K3S_ENTRYPOINT_SCRIPT, "k3s");
     }
 
     // ── Names ─────────────────────────────────────────────────────────────────

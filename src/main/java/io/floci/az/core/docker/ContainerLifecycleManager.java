@@ -16,6 +16,7 @@ import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Mount;
 import com.github.dockerjava.api.model.MountType;
+import com.github.dockerjava.api.model.Network;
 import com.github.dockerjava.api.model.Ports;
 import com.github.dockerjava.core.command.WaitContainerResultCallback;
 import io.floci.az.config.EmulatorConfig;
@@ -969,6 +970,26 @@ public class ContainerLifecycleManager {
         LOG.infov("Created network {0}", name);
     }
 
+    /**
+     * Creates a bridge network on {@code subnet} (CIDR) unless one named {@code name} exists, so containers can take
+     * fixed addresses on it ({@link #connectToNetwork(String, String, String)}).
+     */
+    public void ensureNetwork(String name, String subnet, Map<String, String> labels) {
+        try {
+            dockerClient.inspectNetworkCmd().withNetworkId(name).exec();
+            return;
+        } catch (NotFoundException expected) {
+            LOG.debugv("Network {0} does not exist yet", name);
+        }
+        dockerClient.createNetworkCmd()
+                .withName(name)
+                .withDriver("bridge")
+                .withIpam(new Network.Ipam().withConfig(new Network.Ipam.Config().withSubnet(subnet)))
+                .withLabels(mergedLabels(labels))
+                .exec();
+        LOG.infov("Created network {0} on {1}", name, subnet);
+    }
+
     /** Removes a network, ignoring one that does not exist; a network still in use is logged and left. */
     public void removeNetwork(String name) {
         try {
@@ -987,6 +1008,32 @@ public class ContainerLifecycleManager {
                 .withNetworkId(network)
                 .exec();
         LOG.debugv("Connected container {0} to network {1}", containerId, network);
+    }
+
+    /** The gateway address of {@code network}: the Docker host as the containers on that network reach it. */
+    public Optional<String> networkGateway(String network) {
+        try {
+            Network inspected = dockerClient.inspectNetworkCmd().withNetworkId(network).exec();
+            if (inspected.getIpam() == null || inspected.getIpam().getConfig() == null) {
+                return Optional.empty();
+            }
+            return inspected.getIpam().getConfig().stream().map(Network.Ipam.Config::getGateway)
+                    .filter(gateway -> gateway != null && !gateway.isBlank() && gateway.indexOf(':') < 0)
+                    .findFirst();
+        } catch (NotFoundException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Connects a container to one more network at a fixed IPv4 address, which needs a network with a subnet. */
+    public void connectToNetwork(String containerId, String network, String ipv4Address) {
+        dockerClient.connectToNetworkCmd()
+                .withContainerId(containerId)
+                .withNetworkId(network)
+                .withContainerNetwork(new ContainerNetwork()
+                        .withIpamConfig(new ContainerNetwork.Ipam().withIpv4Address(ipv4Address)))
+                .exec();
+        LOG.debugv("Connected container {0} to network {1} at {2}", containerId, network, ipv4Address);
     }
 
     /** The container's IPv4 address on {@code network}, empty when it is not on that network. */

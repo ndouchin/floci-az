@@ -115,7 +115,7 @@ final class AksReconciler {
         String image = versions.image(version);
         boolean hadCredentials = cluster.getCaData() != null;
         AksClusterManager.ServerStart start = manager.prepareServer(cluster, image, runtime.serverArgs(cluster),
-                runtime.manifests(cluster));
+                runtime.startupFiles(cluster), runtime.manifests(cluster), runtime.legacyServerHash(cluster));
         if (start == AksClusterManager.ServerStart.CREATED_FRESH && hadCredentials) {
             LOG.warnv("AKS cluster {0} lost its data volume and was recreated empty: its CA changed, fetch its"
                     + " credentials again", cluster.getName());
@@ -124,6 +124,7 @@ final class AksReconciler {
             current.setContainerId(cluster.getContainerId());
             current.setHostPort(cluster.getHostPort());
             current.setServerImage(cluster.getServerImage());
+            current.setServerArgsHash(cluster.getServerArgsHash());
             current.setEndpoint(cluster.getEndpoint());
             current.setInternalEndpoint(cluster.getInternalEndpoint());
             if (cluster.getEndpoint() != null) {
@@ -132,11 +133,20 @@ final class AksReconciler {
         });
         waitUntil(id, cluster.getInstanceId(), () -> manager.isApiReady(cluster),
                 "the API server did not answer /readyz within " + readyTimeout.toSeconds() + " s");
+        manager.updateManifests(cluster, runtime.manifests(cluster));
+        if (AksClusterRuntime.workloadIdentityAddonToRemove(cluster)) {
+            manager.removeWorkloadIdentityAddon(cluster);
+            persist(id, cluster.getInstanceId(), current -> current.setWorkloadIdentityWebhookCertificates(null));
+        }
         manager.extractCredentials(cluster);
+        String jwks = cluster.oidcIssuerEnabled() ? manager.serviceAccountJwks(cluster) : null;
         persist(id, cluster.getInstanceId(), current -> {
             current.setCaData(cluster.getCaData());
             current.setClientCertificateData(cluster.getClientCertificateData());
             current.setClientKeyData(cluster.getClientKeyData());
+            if (jwks != null) {
+                current.setServiceAccountJwks(jwks);
+            }
         });
     }
 

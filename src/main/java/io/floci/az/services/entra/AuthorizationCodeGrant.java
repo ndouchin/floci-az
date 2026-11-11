@@ -31,11 +31,14 @@ public class AuthorizationCodeGrant implements GrantHandler {
     private final DirectoryReader directory;
     private final EntraResponses responses;
     private final ClientAuthenticator authenticator;
+    private final AccessTokens accessTokens;
 
     @Inject
     public AuthorizationCodeGrant(TokenIssuer tokenIssuer, EntraStore store, DirectoryReader directory,
-                                  EntraResponses responses, ClientAuthenticator authenticator) {
+                                  EntraResponses responses, ClientAuthenticator authenticator,
+                                  AccessTokens accessTokens) {
         this.tokenIssuer = tokenIssuer;
+        this.accessTokens = accessTokens;
         this.store = store;
         this.directory = directory;
         this.responses = responses;
@@ -87,11 +90,9 @@ public class AuthorizationCodeGrant implements GrantHandler {
             return responses.error(AadstsError.MISSING_CLIENT_CREDENTIAL);
         }
         String scp = Scopes.normalize(authCode.scope());
-        String accessAudience = request.v2() ? appId : Scopes.firstScope(authCode.scope(), request.baseUrl());
-        String accessToken = tokenIssuer.issue(new TokenIssuer.TokenSpec(
-                request.tenantId(), request.issuer(), accessAudience, user.id(), user.id(), appId,
-                Scopes.delegatedScopes(authCode.scope()), request.tokenVersion(), null, request.lifetimeSeconds()),
-                TokenIssuer.userClaims(request.tokenVersion(), user.userPrincipalName()));
+        String accessAudience = request.delegatedAudience(authCode.scope());
+        String accessToken = accessTokens.delegated(request, accessAudience, user.id(),
+                Scopes.delegatedScopes(authCode.scope()), user.userPrincipalName());
         // The ID token audience is always the client id, whatever the API version: that is OIDC, not Azure.
         String idToken = Scopes.values(authCode.scope()).contains("openid") ? tokenIssuer.issueIdToken(new TokenIssuer.TokenSpec(
                 request.tenantId(), request.issuer(), appId, user.id(), user.id(), appId, scp,

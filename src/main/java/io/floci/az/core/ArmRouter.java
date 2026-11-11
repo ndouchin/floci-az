@@ -76,7 +76,8 @@ public class ArmRouter {
 
     private static final Comparator<ResolvedProvider> GUARDED_FIRST_THEN_MARKER =
         Comparator.comparing((ResolvedProvider route) -> route.guard() == ServiceRoutes.ProviderRoute.ALWAYS)
-                  .thenComparing(ResolvedProvider::marker);
+                  .thenComparing(ResolvedProvider::marker)
+                  .thenComparing(ResolvedProvider::serviceType);
 
     private final AzureServiceRegistry serviceRegistry;
     private final RouteDispatcher dispatcher;
@@ -135,13 +136,19 @@ public class ArmRouter {
     /**
      * Fails fast when two handlers claim the same ARM provider namespace, the provider counterpart of
      * {@link AzureRoutingFilter#rejectDuplicateSuffixes}. Without this, a duplicate would resolve silently
-     * by the guarded-first / marker sort order instead of surfacing the wiring bug.
+     * by the guarded-first / marker sort order instead of surfacing the wiring bug. Guarded routes may share a
+     * namespace, since each guard claims its own resource types: Microsoft.Authorization's policy types go to
+     * Azure Policy and its role types to the authorization service.
      */
     static void rejectDuplicateProviders(List<ResolvedProvider> providers) {
         Map<String, String> claimedBy = new HashMap<>();
+        Map<String, Boolean> guardedOnly = new HashMap<>();
         for (ResolvedProvider provider : providers) {
+            boolean guarded = provider.guard() != ServiceRoutes.ProviderRoute.ALWAYS;
             String previous = claimedBy.putIfAbsent(provider.marker(), provider.serviceType());
-            if (previous != null) {
+            boolean sharedByGuards = guarded && guardedOnly.getOrDefault(provider.marker(), false);
+            guardedOnly.merge(provider.marker(), guarded, Boolean::logicalAnd);
+            if (previous != null && !sharedByGuards) {
                 throw new IllegalStateException("Two handlers claim the same ARM provider '"
                     + provider.marker() + "': " + previous + " and " + provider.serviceType());
             }

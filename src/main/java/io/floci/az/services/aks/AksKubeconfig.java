@@ -3,7 +3,9 @@ package io.floci.az.services.aks;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Kubeconfigs handed out by the credential operations, base64-encoded and laid out as AKS writes them: cluster and
@@ -50,6 +52,70 @@ final class AksKubeconfig {
                 """.formatted(endpoint), """
                     token: floci-az-mock-token
                 """);
+    }
+
+    /**
+     * The {@code clusterUser} credential of an Entra cluster: an exec user running {@code kubelogin get-token} with the
+     * AKS applications and {@code --login devicecode}, the default AKS writes from Kubernetes 1.24
+     * ({@code kubelogin-authentication.md}). {@code authorityHost}, when set, is appended with
+     * {@code --disable-instance-discovery} so kubelogin signs in at floci-az instead of Microsoft Entra.
+     */
+    static String entraExec(ManagedCluster cluster, String tenantId, String environment, String authorityHost) {
+        List<String> args = new ArrayList<>(List.of("get-token", "--environment", environment,
+                "--server-id", AksEntra.SERVER_APP_ID, "--client-id", AksEntra.CLIENT_APP_ID,
+                "--tenant-id", tenantId, "--login", "devicecode"));
+        if (authorityHost != null) {
+            args.addAll(List.of("--authority-host", authorityHost, "--disable-instance-discovery"));
+        }
+        StringBuilder user = new StringBuilder("""
+                    exec:
+                      apiVersion: client.authentication.k8s.io/v1beta1
+                      args:
+                """);
+        args.forEach(arg -> user.append("      - ").append(arg).append('\n'));
+        user.append("""
+                      command: kubelogin
+                      env: null
+                      installHint: |2
+
+                        kubelogin is not installed which is required to connect to AAD enabled cluster.
+
+                        To learn more, please go to https://aka.ms/aks/kubelogin
+                      provideClusterInfo: false
+                """);
+        return encode(cluster, Role.USER, entraClusterFields(cluster), user.toString());
+    }
+
+    /**
+     * The legacy {@code azure} auth-provider form {@code format=azure} asks for, with the keys kubelogin's
+     * {@code convert-kubeconfig} reads; {@code config-mode: "1"} means the audience is the server application itself,
+     * not the legacy {@code spn:} form.
+     */
+    static String entraAuthProvider(ManagedCluster cluster, String tenantId, String environment) {
+        return encode(cluster, Role.USER, entraClusterFields(cluster), """
+                    auth-provider:
+                      config:
+                        apiserver-id: %s
+                        client-id: %s
+                        config-mode: '1'
+                        environment: %s
+                        tenant-id: %s
+                      name: azure
+                """.formatted(AksEntra.SERVER_APP_ID, AksEntra.CLIENT_APP_ID, environment, tenantId));
+    }
+
+    private static String entraClusterFields(ManagedCluster cluster) {
+        if (cluster.getCaData() == null || cluster.getEndpoint() == null) {
+            String endpoint = cluster.getEndpoint() != null ? cluster.getEndpoint() : "https://localhost:6443";
+            return """
+                        insecure-skip-tls-verify: true
+                        server: %s
+                    """.formatted(endpoint);
+        }
+        return """
+                    certificate-authority-data: %s
+                    server: %s
+                """.formatted(cluster.getCaData(), cluster.getEndpoint());
     }
 
     static String userName(ManagedCluster cluster, Role role) {

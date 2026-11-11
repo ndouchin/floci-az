@@ -89,6 +89,33 @@ class AadstsCatalogGoldenTest {
                 new Entry(7000218, "invalid_client", 401,
                         "The request body must contain the following parameter: 'client_assertion' or "
                                 + "'client_secret'."));
+        GOLDEN.put(AadstsError.ASSERTION_MALFORMED,
+                new Entry(50027, "invalid_request", 400, "JWT token is invalid or malformed."));
+        GOLDEN.put(AadstsError.FEDERATED_NO_MATCH,
+                new Entry(70021, "invalid_request", 400,
+                        "No matching federated identity record found for presented assertion. Assertion Issuer: '%s'. "
+                                + "Assertion Subject: '%s'. Assertion Audience: '%s'."));
+        GOLDEN.put(AadstsError.FEDERATED_ISSUER_MISMATCH,
+                new Entry(700211, "invalid_client", 400,
+                        "No matching federated identity record found for presented assertion issuer '%s'. Please check "
+                                + "your federated identity credential Subject, Audience and Issuer against the presented "
+                                + "assertion."));
+        GOLDEN.put(AadstsError.FEDERATED_AUDIENCE_MISMATCH,
+                new Entry(700212, "invalid_client", 400,
+                        "No matching federated identity record found for presented assertion audience '%s'. Please "
+                                + "check your federated identity credential Subject, Audience and Issuer against the "
+                                + "presented assertion."));
+        GOLDEN.put(AadstsError.FEDERATED_SUBJECT_MISMATCH,
+                new Entry(700213, "invalid_client", 400,
+                        "No matching federated identity record found for presented assertion subject '%s'. Please note "
+                                + "that matching is done using a case-sensitive comparison. Check your federated identity "
+                                + "credential Subject, Audience, and Issuer against the presented assertion."));
+        GOLDEN.put(AadstsError.ASSERTION_SIGNATURE_INVALID,
+                new Entry(700027, "invalid_client", 400, "Client assertion failed signature validation."));
+        GOLDEN.put(AadstsError.ASSERTION_OUT_OF_TIME_RANGE,
+                new Entry(700024, "invalid_client", 400, "Client assertion is not within its valid time range."));
+        GOLDEN.put(AadstsError.EXTERNAL_OIDC_UNREACHABLE,
+                new Entry(90061, "invalid_request", 400, "Request to External OIDC endpoint failed."));
         GOLDEN.put(AadstsError.SERIALISATION_FAILED,
                 new Entry(50000, "server_error", 500, "serialisation failed"));
     }

@@ -49,6 +49,8 @@ public class DiscoveryProvider {
 
     private static final List<String> OIDC_SCOPES = List.of("openid", "profile", "email");
 
+    private static final String V1_PATH = ".well-known/openid-configuration";
+
     private final Instance<EntraEndpoint> endpoints;
     private final IssuerFactory issuers;
 
@@ -60,7 +62,8 @@ public class DiscoveryProvider {
 
     public Map<String, Object> document(EntraRequest request) {
         Map<String, Object> fields = new HashMap<>();
-        fields.put("issuer", issuers.discoveryIssuer(request.baseUrl(), request.tenantSegment()));
+        boolean v1 = request.path().equals(request.tenantSegment() + "/" + V1_PATH);
+        fields.put("issuer", issuers.discoveryIssuer(request.baseUrl(), request.tenantSegment(), !v1));
         // Kept although there is no logout route yet: msal-js throws endSessionEndpointNotSupported on
         // logout when the field is missing (msal-common src/authority/Authority.ts, endSessionEndpoint).
         fields.put("end_session_endpoint", request.tenantBase() + "/oauth2/v2.0/logout");

@@ -19,10 +19,13 @@ public class RefreshTokenGrant implements GrantHandler {
     private final EntraResponses responses;
     private final ClientAuthenticator authenticator;
     private final EmulatorConfig config;
+    private final AccessTokens accessTokens;
 
     @Inject
     public RefreshTokenGrant(EntraStore store, DirectoryReader directory, TokenIssuer issuer,
-                             EntraResponses responses, ClientAuthenticator authenticator, EmulatorConfig config) {
+                             EntraResponses responses, ClientAuthenticator authenticator, EmulatorConfig config,
+                             AccessTokens accessTokens) {
+        this.accessTokens = accessTokens;
         this.store = store;
         this.directory = directory;
         this.issuer = issuer;
@@ -71,9 +74,8 @@ public class RefreshTokenGrant implements GrantHandler {
             return responses.error(AadstsError.REFRESH_TOKEN_INVALID);
         }
 
-        String access = issuer.issue(new TokenIssuer.TokenSpec(request.tenantId(), request.issuer(), request.appId(),
-                user.id(), user.id(), request.appId(), Scopes.delegatedScopes(scope), request.tokenVersion(), null,
-                request.lifetimeSeconds()), TokenIssuer.userClaims(request.tokenVersion(), user.userPrincipalName()));
+        String access = accessTokens.delegated(request, request.delegatedAudience(scope), user.id(),
+                Scopes.delegatedScopes(scope), user.userPrincipalName());
         String idToken = Scopes.values(scope).contains("openid") ? issuer.issueIdToken(new TokenIssuer.TokenSpec(
                 request.tenantId(), request.issuer(), request.appId(), user.id(), user.id(), request.appId(),
                 Scopes.normalize(scope), request.tokenVersion(), null, request.lifetimeSeconds()), null,

@@ -369,6 +369,7 @@ public interface EmulatorConfig {
         DeploymentsConfig      deployments();
         ContainerAppsConfig    containerApps();
         PolicyConfig           policy();
+        AuthorizationConfig    authorization();
         ResourceGraphConfig    resourceGraph();
         ManagementGroupsConfig managementGroups();
 
@@ -513,6 +514,15 @@ public interface EmulatorConfig {
          */
         @WithDefault("true")
         boolean insights();
+    }
+
+    /**
+     * Azure RBAC under Microsoft.Authorization: role definitions (built-in catalog and custom roles) and role
+     * assignments at every scope, evaluated by AKS's Azure RBAC authorization webhook.
+     */
+    interface AuthorizationConfig {
+        @WithDefault("true")
+        boolean enabled();
     }
 
     /**
@@ -742,6 +752,77 @@ public interface EmulatorConfig {
         /** When {@code true}, k3s containers are left running when floci-az shuts down. */
         @WithDefault("false")
         boolean keepRunningOnShutdown();
+
+        /** Microsoft Entra integration and Azure RBAC of the clusters. */
+        AksEntraConfig entra();
+
+        /** Workload Identity: how pods reach floci-az's Entra, and the mutating webhook. */
+        AksWorkloadIdentityConfig workloadIdentity();
+
+        /** Services of type LoadBalancer. */
+        AksLoadBalancerConfig loadBalancer();
+    }
+
+    interface AksLoadBalancerConfig {
+        /**
+         * Who answers Services of type LoadBalancer in new clusters: {@code emulated} (k3s's servicelb off, floci-az
+         * writes an Azure-shaped address and runs one appliance container per Service holding it), {@code servicelb}
+         * (k3s's bundled servicelb, node addresses) or {@code off} (Services stay pending). Clusters keep the mode they
+         * were created with; those created before it existed keep servicelb.
+         */
+        @WithDefault("emulated")
+        String mode();
+
+        /** Seconds a new load balancer stays pending before its address is written, as cloud ones take a while. */
+        @WithDefault("0")
+        int provisioningDelaySeconds();
+
+        /** The range public load balancer addresses come from (RFC 5737 TEST-NET-2), on a Docker network of its own. */
+        @WithDefault("198.51.100.0/24")
+        String publicCidr();
+
+        /** {@code dynamic}: each Service port is published on a free host port; {@code none}: nothing is published. */
+        @WithDefault("dynamic")
+        String hostPorts();
+    }
+
+    /** How pods of a Workload Identity cluster reach floci-az's Entra. */
+    enum AksEntraMode {
+        /**
+         * Pods keep AKS's {@code AZURE_AUTHORITY_HOST=https://login.microsoftonline.com/}: the cluster's DNS sends that
+         * name to floci-az, whose certificate covers it, and floci-az answers instance discovery.
+         */
+        MICROSOFT_HOSTNAMES,
+        /** Pods get {@code AZURE_AUTHORITY_HOST} set to floci-az's in-cluster name; code must disable instance discovery. */
+        AUTHORITY
+    }
+
+    interface AksWorkloadIdentityConfig {
+        /** How pods reach floci-az's Entra. Both modes need floci-az's TLS on, since the Azure SDKs refuse plain HTTP. */
+        @WithDefault("microsoft-hostnames")
+        AksEntraMode entraMode();
+
+        /** The azure-workload-identity mutating webhook image AKS's add-on runs. */
+        @WithDefault("mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3")
+        String webhookImage();
+    }
+
+    interface AksEntraConfig {
+        /**
+         * When {@code true}, the Entra {@code clusterUser} kubeconfig appends {@code --authority-host <floci-az HTTPS
+         * base URL>/ --disable-instance-discovery} to kubelogin's arguments, so it signs in at floci-az unedited. Off,
+         * the kubeconfig carries exactly AKS's arguments.
+         */
+        @WithDefault("false")
+        boolean kubeconfigFlociAuthority();
+
+        /**
+         * How long a cluster's API server caches the answers of floci-az's token and authorization webhooks
+         * ({@code authentication-token-webhook-cache-ttl}, {@code authorization-webhook-cache-*-ttl}). AKS documents
+         * up to five minutes for a role assignment to take effect; the short default lets tests see changes at once.
+         */
+        @WithDefault("5")
+        int webhookCacheTtlSeconds();
     }
 
     /** Azure Red Hat OpenShift ({@code Microsoft.RedHatOpenShift}): clusters backed by MicroShift containers. */

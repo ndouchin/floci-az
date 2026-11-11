@@ -33,12 +33,43 @@ final class KubeconfigClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** A response: its status and body. */
+    record Reply(int status, String body) {
+        JsonNode json() throws Exception {
+            return MAPPER.readTree(body);
+        }
+    }
+
     private final String server;
     private final HttpClient http;
+    private final String bearer;
 
-    private KubeconfigClient(String server, HttpClient http) {
+    private KubeconfigClient(String server, HttpClient http, String bearer) {
         this.server = server;
         this.http = http;
+        this.bearer = bearer;
+    }
+
+    /**
+     * A client that trusts the server and CA of {@code encoded} but authenticates with the bearer {@code token}, as
+     * kubelogin's exec credential does.
+     */
+    static KubeconfigClient withBearer(String encoded, String token) throws Exception {
+        String yaml = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+        byte[] ca = Base64.getDecoder().decode(field(yaml, "certificate-authority-data"));
+        CertificateFactory certificates = CertificateFactory.getInstance("X.509");
+        KeyStore trust = KeyStore.getInstance("PKCS12");
+        trust.load(null, null);
+        int i = 0;
+        for (Certificate c : certificates.generateCertificates(new ByteArrayInputStream(ca))) {
+            trust.setCertificateEntry("ca" + i++, c);
+        }
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trust);
+        SSLContext ssl = SSLContext.getInstance("TLS");
+        ssl.init(null, tmf.getTrustManagers(), null);
+        HttpClient http = HttpClient.newBuilder().sslContext(ssl).connectTimeout(Duration.ofSeconds(5)).build();
+        return new KubeconfigClient(field(yaml, "server"), http, token);
     }
 
     static KubeconfigClient fromBase64(String encoded) throws Exception {
@@ -69,7 +100,7 @@ final class KubeconfigClient {
         SSLContext ssl = SSLContext.getInstance("TLS");
         ssl.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
         HttpClient http = HttpClient.newBuilder().sslContext(ssl).connectTimeout(Duration.ofSeconds(5)).build();
-        return new KubeconfigClient(server, http);
+        return new KubeconfigClient(server, http, null);
     }
 
     static String field(String yaml, String name) {
@@ -98,21 +129,27 @@ final class KubeconfigClient {
     }
 
     String text(String path) throws Exception {
-        HttpResponse<String> response = http.send(HttpRequest.newBuilder(URI.create(server + path))
-                .timeout(Duration.ofSeconds(10)).GET().build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new IllegalStateException("GET " + path + " answered " + response.statusCode() + ": "
-                    + response.body());
+        Reply reply = exchange("GET", path, null);
+        if (reply.status() != 200) {
+            throw new IllegalStateException("GET " + path + " answered " + reply.status() + ": " + reply.body());
         }
-        return response.body();
+        return reply.body();
     }
 
     int send(String method, String path, String json) throws Exception {
+        return exchange(method, path, json).status();
+    }
+
+    Reply exchange(String method, String path, String json) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(server + path))
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json");
+        if (bearer != null) {
+            request.header("Authorization", "Bearer " + bearer);
+        }
         request.method(method, json == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(json));
-        return http.send(request.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+        HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        return new Reply(response.statusCode(), response.body());
     }
 }

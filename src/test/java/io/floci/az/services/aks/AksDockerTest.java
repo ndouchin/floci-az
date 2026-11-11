@@ -342,7 +342,8 @@ class AksDockerTest {
 
     @Test
     @Order(7)
-    @DisplayName("disableLocalAccounts refuses the admin credential with AKS's error, and enabling them gives it back")
+    @DisplayName("disableLocalAccounts without Entra refuses both static credentials with AKS's error, and enabling"
+            + " them gives them back")
     void disableLocalAccounts() throws Exception {
         awaitOperation(given().contentType("application/json")
                 .body("{\"location\":\"eastus\",\"properties\":{\"disableLocalAccounts\":true}}")
@@ -350,12 +351,14 @@ class AksDockerTest {
 
         given().contentType("application/json").post(CLUSTER_PATH + "/listClusterAdminCredential" + API)
                 .then().statusCode(400).body("error.code", equalTo("BadRequest"));
-        assertTrue(gitVersion(kubeconfig("listClusterUserCredential")).startsWith("v1.35.10"));
+        given().contentType("application/json").post(CLUSTER_PATH + "/listClusterUserCredential" + API)
+                .then().statusCode(400).body("error.code", equalTo("BadRequest"));
 
         awaitOperation(given().contentType("application/json")
                 .body("{\"location\":\"eastus\",\"properties\":{\"disableLocalAccounts\":false}}")
                 .put(CLUSTER_PATH + API));
         kubeconfig("listClusterAdminCredential");
+        assertTrue(gitVersion(kubeconfig("listClusterUserCredential")).startsWith("v1.35.10"));
     }
 
     @Test

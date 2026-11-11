@@ -307,6 +307,17 @@ floci-az:
       api-server-base-port: 6443
       api-server-max-port: 7443
       keep-running-on-shutdown: false
+      entra:
+        kubeconfig-floci-authority: false  # FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY: add --authority-host <floci-az>/ to the Entra user kubeconfig
+        webhook-cache-ttl-seconds: 5       # how long API servers cache floci-az's token and authorization webhook answers
+      workload-identity:
+        entra-mode: microsoft-hostnames    # FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_ENTRA_MODE: microsoft-hostnames | authority (both need floci-az TLS)
+        webhook-image: "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3"
+      load-balancer:
+        mode: emulated                     # FLOCI_AZ_SERVICES_AKS_LOAD_BALANCER_MODE: emulated | servicelb | off (new clusters)
+        provisioning-delay-seconds: 0
+        public-cidr: "198.51.100.0/24"     # public load balancer addresses (TEST-NET-2)
+        host-ports: dynamic                # dynamic | none: publish each Service port on a free host port
     aro:
       enabled: true
       mocked: false         # true = no Docker; clusters are pure ARM state with a synthetic kubeconfig. false = one MicroShift container per cluster
@@ -396,6 +407,8 @@ floci-az:
       enabled: true       # Microsoft.Authorization policy definitions, set definitions, assignments and exemptions
       enforcement: true   # FLOCI_AZ_SERVICES_POLICY_ENFORCEMENT: evaluate assigned rules on resource writes (deny, append, audit)
       insights: true      # FLOCI_AZ_SERVICES_POLICY_INSIGHTS: Microsoft.PolicyInsights compliance states, queries, summaries and scans
+    authorization:
+      enabled: true       # FLOCI_AZ_SERVICES_AUTHORIZATION_ENABLED: Microsoft.Authorization role definitions and role assignments (Azure RBAC)
     resource-graph:
       enabled: true       # FLOCI_AZ_SERVICES_RESOURCE_GRAPH_ENABLED: Microsoft.ResourceGraph queries (KQL subset) over the emulator's resources
     management-groups:

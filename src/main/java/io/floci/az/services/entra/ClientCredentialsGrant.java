@@ -8,12 +8,12 @@ import jakarta.ws.rs.core.Response;
 @ApplicationScoped
 public class ClientCredentialsGrant implements GrantHandler {
 
-    private final TokenIssuer tokenIssuer;
+    private final AccessTokens accessTokens;
     private final EntraResponses responses;
 
     @Inject
-    public ClientCredentialsGrant(TokenIssuer tokenIssuer, EntraResponses responses) {
-        this.tokenIssuer = tokenIssuer;
+    public ClientCredentialsGrant(AccessTokens accessTokens, EntraResponses responses) {
+        this.accessTokens = accessTokens;
         this.responses = responses;
     }
 
@@ -30,10 +30,7 @@ public class ClientCredentialsGrant implements GrantHandler {
     @Override
     public Response handle(TokenRequest request) {
         String audience = Scopes.clientCredentialsAudience(request.scope(), request.baseUrl());
-        String token = tokenIssuer.issue(new TokenIssuer.TokenSpec(
-                request.tenantId(), request.issuer(), audience, request.clientObjectId(),
-                request.clientObjectId(), request.appId(), null, request.tokenVersion(), "app",
-                request.lifetimeSeconds()));
+        String token = accessTokens.app(request, audience);
         return responses.token(token, null, request.lifetimeSeconds(), null);
     }
 }

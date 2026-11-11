@@ -38,6 +38,8 @@ class ArmSurfaceGoldenTest {
         Microsoft.Authorization/policyDefinitions                                      SUBSCRIPTION    NONE      FILTER
         Microsoft.Authorization/policyExemptions                                       EXTENSION       OPTIONAL  FILTER
         Microsoft.Authorization/policySetDefinitions                                   SUBSCRIPTION    NONE      FILTER
+        Microsoft.Authorization/roleAssignments                                        EXTENSION       NONE      FILTER
+        Microsoft.Authorization/roleDefinitions                                        EXTENSION       NONE      FILTER
         Microsoft.Cache/redis                                                          RESOURCE_GROUP  REQUIRED  FILTER
         Microsoft.Communication/communicationServices                                  RESOURCE_GROUP  GLOBAL    FILTER
         Microsoft.Communication/emailServices                                          RESOURCE_GROUP  GLOBAL    FILTER

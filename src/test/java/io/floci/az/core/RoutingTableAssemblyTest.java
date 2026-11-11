@@ -49,7 +49,8 @@ class RoutingTableAssemblyTest {
         Map.entry(".servicebus.windows.net", "servicebus"),
         Map.entry(".service.signalr.net", "signalr"),
         Map.entry(".azurecontainerapps.io", "containerapps"),
-        Map.entry(".azurecr.io", "acr")
+        Map.entry(".azurecr.io", "acr"),
+        Map.entry(".oic.prod-aks.azure.com", "aks")
     );
 
     /** A4's ACCOUNT_SUFFIX_ROUTES, verbatim (pre-sort). */
@@ -83,13 +84,15 @@ class RoutingTableAssemblyTest {
      * A4's PROVIDER_ROUTES plus later services, minus {@code Microsoft.EventGrid}: A6 moved Event Grid's control plane out
      * of the filter's provider lane into the ArmHandler lane (it implements {@code ArmProviderService}),
      * so it is no longer a filter provider route. {@code Microsoft.Authorization} was added later for
-     * the guarded Azure Policy route, {@code Microsoft.ResourceGraph} for the tenant-rooted Resource Graph
-     * query endpoint, {@code Microsoft.Management} for management groups, and {@code Microsoft.RedHatOpenShift}
+     * the guarded Azure Policy route and again for the guarded role definitions and assignments route,
+     * {@code Microsoft.ResourceGraph} for the tenant-rooted Resource Graph query endpoint,
+     * {@code Microsoft.Management} for management groups, and {@code Microsoft.RedHatOpenShift}
      * for Azure Red Hat OpenShift. Every other entry is unchanged from A4.
      */
     private static final Set<Map.Entry<String, String>> GOLDEN_PROVIDER_ROUTES = Set.of(
         Map.entry("/providers/Microsoft.ManagedIdentity/", "managedidentity"),
         Map.entry("/providers/Microsoft.Authorization/", "policy"),
+        Map.entry("/providers/Microsoft.Authorization/", "authorization"),
         Map.entry("/providers/Microsoft.ResourceGraph/", "resourcegraph"),
         Map.entry("/providers/Microsoft.Management/", "managementgroups"),
         Map.entry("/providers/Microsoft.PolicyInsights/", "policyinsights"),
@@ -143,7 +146,8 @@ class RoutingTableAssemblyTest {
             String marker = route.getKey();
             String namespace = marker.substring("/providers/".length(), marker.length() - 1);
             String type = switch (namespace) {
-                case "Microsoft.Authorization" -> "policyAssignments";
+                case "Microsoft.Authorization" -> "authorization".equals(route.getValue())
+                    ? "roleAssignments" : "policyAssignments";
                 case "Microsoft.Resources" -> "deployments";
                 default -> "widgets";
             };
@@ -188,9 +192,9 @@ class RoutingTableAssemblyTest {
     @Test
     void guardedProvidersAreTriedBeforeUnguardedOnes() {
         List<Map.Entry<String, String>> providers = armRouter.providerRoutesInMatchOrder();
-        assertEquals(Set.of("managedidentity", "policy"),
-            Set.of(providers.get(0).getValue(), providers.get(1).getValue()),
-            "the guarded Managed Identity and Azure Policy routes must sort first, got " + providers);
+        assertEquals(Set.of("managedidentity", "policy", "authorization"),
+            Set.of(providers.get(0).getValue(), providers.get(1).getValue(), providers.get(2).getValue()),
+            "the guarded Managed Identity, Azure Policy and role routes must sort first, got " + providers);
     }
 
     /**
@@ -234,6 +238,17 @@ class RoutingTableAssemblyTest {
             () -> ArmRouter.rejectDuplicateProviders(clashing));
         assertTrue(failure.getMessage().contains("Microsoft.Cache"), failure.getMessage());
         assertTrue(failure.getMessage().contains("someOtherService"), failure.getMessage());
+    }
+
+    @Test
+    void guardedRoutesMayShareANamespace() {
+        ArmRouter.rejectDuplicateProviders(List.of(
+            new ArmRouter.ResolvedProvider("/providers/Microsoft.Authorization/", "policy", path -> true),
+            new ArmRouter.ResolvedProvider("/providers/Microsoft.Authorization/", "authorization", path -> false)));
+        Assertions.assertThrows(IllegalStateException.class, () -> ArmRouter.rejectDuplicateProviders(List.of(
+            new ArmRouter.ResolvedProvider("/providers/Microsoft.Authorization/", "policy", path -> true),
+            new ArmRouter.ResolvedProvider("/providers/Microsoft.Authorization/", "authorization",
+                ServiceRoutes.ProviderRoute.ALWAYS))));
     }
 
     /** Distinct provider namespaces must pass — otherwise the guard above would be vacuous. */

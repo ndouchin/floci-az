@@ -123,7 +123,8 @@ public class TokenEndpoint implements EntraEndpoint {
                 : TokenIssuer.deterministicGuid(appId);
 
         return new TokenRequest(form, request.tenantId(), directoryTenantId, request.baseUrl(), v2, clientId, appId,
-                clientObjectId, issuers.issuer(request.baseUrl(), request.tenantId(), v2), scope,
+                clientObjectId, issuers.issuer(request.baseUrl(), request.tenantId(), false),
+                issuers.issuer(request.baseUrl(), request.tenantId(), true), scope,
                 config.services().entra().tokenLifetimeSeconds(),
                 credentials.clientSecret() != null || credentials.assertion());
     }

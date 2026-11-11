@@ -46,7 +46,7 @@ All endpoints are tenant-rooted at the base URL (port `4577`). `{tenant}` may be
 | `GET /{tenant}/.well-known/openid-configuration` | OpenID discovery |
 | `GET /oidc/userinfo`, `POST /oidc/userinfo` | Scoped profile for a locally signed delegated access token |
 | `GET /{tenant}/discovery/v2.0/keys` | JWKS |
-| `GET /common/userrealm/{username}?api-version=1.0` | Home realm discovery: always `account_type: Managed`, so MSAL username-password sign-in goes straight to the password grant |
+| `GET /common/userrealm/{username}?api-version=1.0` | Home realm discovery: always `account_type: Managed`, so MSAL username-password sign-in goes straight to the password grant. The segment matches in any casing, since MSAL Go sends `common/UserRealm/` |
 
 ## Discovery document
 
@@ -56,7 +56,7 @@ early with a clear message instead of calling a route that does not exist:
 
 | Field | Value |
 |---|---|
-| `issuer` | The configured `issuer`, or `{base}/{tenant}/v2.0` when unset (`common` stays `common`) |
+| `issuer` | The configured `issuer`, or `{base}/{tenant}/v2.0` when unset (`common` stays `common`). The v1.0 document (`/{tenant}/.well-known/openid-configuration`) reports the v1.0 issuer `{base}/{tenant}/`, as real Entra's reports `https://sts.windows.net/{tenant}/` |
 | `authorization_endpoint`, `token_endpoint`, `jwks_uri` | the routes in the table above |
 | `grant_types_supported` | `authorization_code`, `client_credentials`, `password`, `refresh_token` |
 | `response_types_supported` | `code` |
@@ -171,8 +171,32 @@ revocation and Graph's `revokeSignInSessions` action are not modelled. The v1.0 
 not implemented.
 
 **Group membership** for the signed-in user is *not* embedded in the token (no `groups` claim, matching
-real Entra's default behavior): call the Graph `getMemberGroups` endpoint instead, see
-[`services/graph.md`](graph.md).
+real Entra's default behavior), except for the resources listed under
+[Access token audience and version](#access-token-audience-and-version): call the Graph `getMemberGroups`
+endpoint instead, see [`services/graph.md`](graph.md).
+
+## Access token audience and version
+
+| Grant | `aud` of the access token |
+|---|---|
+| `client_credentials` | The scope's resource: `{resource}/.default` gives `{resource}` |
+| `password`, `authorization_code`, `refresh_token` | The API the first non-OIDC scope names (`{resource}/.default` or `{resource}/{permission}` gives `{resource}`). At the v1.0 endpoint the `resource` parameter wins. A request that names only OIDC scopes keeps the client id |
+
+Entra documents `aud` as the API the token is for: "In v2.0 tokens, this value is always the client ID
+of the API" ([access token claims](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference)).
+Entra reads a bare permission such as `User.Read` as a Microsoft Graph permission; the emulator keeps
+the client id for it, as it did for every delegated token before.
+
+A token's shape follows the resource's `requestedAccessTokenVersion`, not the endpoint the client called
+([access tokens](https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens)). The emulator knows
+these first-party resources; every other resource gets the version of the endpoint called:
+
+| Resource | Token version | `groups` claim |
+|---|---|---|
+| Azure Kubernetes Service AAD server `6dae42f8-4368-4678-94ff-3960e28e3630` ([kubelogin authentication](https://learn.microsoft.com/en-us/azure/aks/kubelogin-authentication)) | 1.0: v1.0 issuer `{base}/{tenant}/`, `appid`, `upn` and `unique_name` | The subject's direct group object ids (user or service principal), omitted when it has none |
+
+The groups overage indicator (`_claim_names` and `_claim_sources` above 200 groups) is not emitted, and
+group membership stays direct only.
 
 ## Acquiring a token
 
@@ -320,7 +344,8 @@ ID token and is not returned by UserInfo.
 The local authorization-code access token retains these OIDC scopes in `scp`; token response
 scope formatting is unchanged. UserInfo accepts the request cloud's Graph endpoint audience,
 Graph's application ID and the client audience used by existing local v2 delegated tokens.
-App-only tokens and tokens for other API audiences are
+App-only tokens and tokens for other API audiences (a delegated token whose scope names an API is
+issued for that API, see [Access token audience and version](#access-token-audience-and-version)) are
 rejected. This endpoint serves directory-backed code-flow users; synthetic password-grant
 identities are not directory provisioning. Invalid tokens return a Bearer 401, and missing
 `openid` permission returns a Bearer 403. It does not accept external Microsoft tokens.

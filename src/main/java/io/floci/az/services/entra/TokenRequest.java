@@ -13,15 +13,31 @@ import java.util.Map;
  * @param clientId        the {@code client_id} from the form or HTTP Basic, or null
  * @param appId           the application id the token is issued to
  * @param clientObjectId  the object id of the client's service principal
- * @param issuer          the {@code iss} claim
+ * @param v1Issuer        the {@code iss} claim of v1.0 tokens
+ * @param v2Issuer        the {@code iss} claim of v2.0 tokens
  * @param scope           {@code scope}, or the v1 {@code resource} when no scope was sent
  * @param lifetimeSeconds the access token lifetime
  * @param clientCredentialPresent whether the form or Basic header supplied a secret or assertion
  */
 public record TokenRequest(Map<String, String> form, String tenantId, String directoryTenantId, String baseUrl,
                            boolean v2,
-                           String clientId, String appId, String clientObjectId, String issuer,
+                           String clientId, String appId, String clientObjectId, String v1Issuer, String v2Issuer,
                            String scope, long lifetimeSeconds, boolean clientCredentialPresent) {
+
+    /** The {@code iss} claim of the endpoint's token version. */
+    public String issuer() {
+        return v2 ? v2Issuer : v1Issuer;
+    }
+
+    /** The {@code ver} of an access token for {@code audience}: the resource's requested version, else the endpoint's. */
+    public String accessTokenVersion(String audience) {
+        return FirstPartyResources.accessTokenVersion(audience).orElse(tokenVersion());
+    }
+
+    /** The {@code iss} of an access token for {@code audience}, matching {@link #accessTokenVersion}. */
+    public String accessTokenIssuer(String audience) {
+        return "2.0".equals(accessTokenVersion(audience)) ? v2Issuer : v1Issuer;
+    }
 
     /**
      * The {@code aud} of a delegated access token for {@code requestedScope}: the v1.0 {@code resource} when the

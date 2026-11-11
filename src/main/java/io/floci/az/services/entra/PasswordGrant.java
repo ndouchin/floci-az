@@ -19,11 +19,13 @@ public class PasswordGrant implements GrantHandler {
     private final DirectoryReader directory;
     private final EmulatorConfig config;
     private final EntraStore store;
+    private final AccessTokens accessTokens;
 
     @Inject
     public PasswordGrant(TokenIssuer tokenIssuer, EntraResponses responses, DirectoryReader directory,
-                         EmulatorConfig config, EntraStore store) {
+                         EmulatorConfig config, EntraStore store, AccessTokens accessTokens) {
         this.tokenIssuer = tokenIssuer;
+        this.accessTokens = accessTokens;
         this.responses = responses;
         this.directory = directory;
         this.config = config;
@@ -63,11 +65,8 @@ public class PasswordGrant implements GrantHandler {
         String principalName = user == null ? username : user.userPrincipalName();
         String audience = request.delegatedAudience(request.scope());
         String scp = Scopes.normalize(request.scope());
-        String token = tokenIssuer.issue(new TokenIssuer.TokenSpec(
-                request.tenantId(), request.issuer(), audience, userOid, userOid, request.appId(),
-                Scopes.delegatedScopes(request.scope()),
-                request.tokenVersion(), null, request.lifetimeSeconds()),
-                TokenIssuer.userClaims(request.tokenVersion(), principalName));
+        String token = accessTokens.delegated(request, audience, userOid, Scopes.delegatedScopes(request.scope()),
+                principalName);
         // MSAL asks for openid and client_info=1 on every password grant, and MSAL4J returns no account
         // (which azure-identity dereferences) unless the response carries both an ID token and client_info.
         String idToken = Scopes.values(request.scope()).contains("openid")

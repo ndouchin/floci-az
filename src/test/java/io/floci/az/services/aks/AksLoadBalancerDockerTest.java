@@ -223,7 +223,7 @@ class AksLoadBalancerDockerTest {
         assertEquals(201, admin().send("POST", "/api/v1/namespaces/default/pods", MAPPER.writeValueAsString(
                 Map.of("apiVersion", "v1", "kind", "Pod", "metadata", Map.of("name", "probe"),
                         "spec", Map.of("restartPolicy", "Never", "containers", List.of(Map.of("name", "probe",
-                                "image", BUSYBOX, "command", List.of("sh", "-c", "for i in $(seq 1 30); do wget -qO- "
+                                "image", BUSYBOX, "command", List.of("sh", "-c", "for i in $(seq 1 30); do wget -T 5 -qO- "
                                         + "http://" + publicAddress + "/ && exit 0; sleep 2; done; exit 1"))))))));
         AksTestPolling.until(Duration.ofMinutes(2), () -> {
             try {

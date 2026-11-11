@@ -3,6 +3,7 @@ package io.floci.az.services.aks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.floci.az.core.tls.TlsConfigSource;
+import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
@@ -51,13 +52,9 @@ class AksWorkloadIdentityDockerTest {
 
     /**
      * floci-az with TLS: its TLS proxy takes floci-az's port and hands HTTP and HTTPS to the internal ports, which the
-     * test server listens on. The TLS config source reads system properties, so the switch is set as one.
+     * test server listens on.
      */
     public static class RealModeProfile implements QuarkusTestProfile {
-        static {
-            System.setProperty(TLS_ENABLED, "true");
-        }
-
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of("floci-az.services.aks.mocked", "false",
@@ -65,6 +62,29 @@ class AksWorkloadIdentityDockerTest {
                     "floci-az.tls.https-port", "0",
                     "quarkus.http.test-port", "4570",
                     "quarkus.http.test-ssl-port", "4571");
+        }
+
+        @Override
+        public List<TestResourceEntry> testResources() {
+            return List.of(new TestResourceEntry(TlsSwitch.class));
+        }
+    }
+
+    /**
+     * The TLS config source reads system properties, so the switch is set as one for the life of this profile's
+     * application only, and the certificate it publishes is forgotten afterwards.
+     */
+    public static class TlsSwitch implements QuarkusTestResourceLifecycleManager {
+        @Override
+        public Map<String, String> start() {
+            System.setProperty(TLS_ENABLED, "true");
+            return Map.of();
+        }
+
+        @Override
+        public void stop() {
+            System.clearProperty(TLS_ENABLED);
+            TlsConfigSource.currentCertPem = null;
         }
     }
 
@@ -98,9 +118,6 @@ class AksWorkloadIdentityDockerTest {
             AksTestPolling.until(Duration.ofMinutes(2), () -> given().get(CLUSTER_PATH + API).statusCode() == 404);
         } catch (Throwable ignored) {
             // best effort: a failed test may already have removed the cluster
-        } finally {
-            System.clearProperty(TLS_ENABLED);
-            TlsConfigSource.currentCertPem = null;
         }
     }
 
@@ -240,9 +257,9 @@ class AksWorkloadIdentityDockerTest {
     @Order(4)
     @DisplayName("a pod trusts floci-az's CA from floci-az-ca and reaches its Entra as login.microsoftonline.com")
     void podsReachEntraAsMicrosoft() throws Exception {
-        String log = runPod("entra-probe", "for i in $(seq 1 60); do curl -sf --cacert /ca/ca.crt "
+        String log = runPod("entra-probe", "for i in $(seq 1 60); do curl -sf --connect-timeout 3 --max-time 10 --cacert /ca/ca.crt "
                 + "https://login.microsoftonline.com/" + TENANT + "/v2.0/.well-known/openid-configuration "
-                + "&& echo && curl -sf --cacert /ca/ca.crt " + issuer + ".well-known/openid-configuration && exit 0; "
+                + "&& echo && curl -sf --connect-timeout 3 --max-time 10 --cacert /ca/ca.crt " + issuer + ".well-known/openid-configuration && exit 0; "
                 + "sleep 2; done; exit 1", "default", "kube-system", false);
         assertTrue(log.contains("\"issuer\":\"https://login.microsoftonline.com/" + TENANT + "/v2.0\""), log);
         assertTrue(log.contains("\"issuer\":\"" + issuer + "\""), log);
@@ -322,7 +339,7 @@ class AksWorkloadIdentityDockerTest {
 
     /** What the Azure SDKs do in a Workload Identity pod: exchange the projected token at the injected authority. */
     private static final String EXCHANGE = "for i in $(seq 1 30); do "
-            + "curl -s --cacert /ca/ca.crt -d grant_type=client_credentials -d \"client_id=$AZURE_CLIENT_ID\" "
+            + "curl -s --connect-timeout 3 --max-time 10 --cacert /ca/ca.crt -d grant_type=client_credentials -d \"client_id=$AZURE_CLIENT_ID\" "
             + "-d scope=https://vault.azure.net/.default "
             + "-d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer "
             + "--data-urlencode \"client_assertion=$(cat $AZURE_FEDERATED_TOKEN_FILE)\" "

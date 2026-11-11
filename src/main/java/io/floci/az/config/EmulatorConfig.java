@@ -758,6 +758,32 @@ public interface EmulatorConfig {
 
         /** Workload Identity: how pods reach floci-az's Entra, and the mutating webhook. */
         AksWorkloadIdentityConfig workloadIdentity();
+
+        /** Services of type LoadBalancer. */
+        AksLoadBalancerConfig loadBalancer();
+    }
+
+    interface AksLoadBalancerConfig {
+        /**
+         * Who answers Services of type LoadBalancer in new clusters: {@code emulated} (k3s's servicelb off, floci-az
+         * writes an Azure-shaped address and runs one appliance container per Service holding it), {@code servicelb}
+         * (k3s's bundled servicelb, node addresses) or {@code off} (Services stay pending). Clusters keep the mode they
+         * were created with; those created before it existed keep servicelb.
+         */
+        @WithDefault("emulated")
+        String mode();
+
+        /** Seconds a new load balancer stays pending before its address is written, as cloud ones take a while. */
+        @WithDefault("0")
+        int provisioningDelaySeconds();
+
+        /** The range public load balancer addresses come from (RFC 5737 TEST-NET-2), on a Docker network of its own. */
+        @WithDefault("198.51.100.0/24")
+        String publicCidr();
+
+        /** {@code dynamic}: each Service port is published on a free host port; {@code none}: nothing is published. */
+        @WithDefault("dynamic")
+        String hostPorts();
     }
 
     /** How pods of a Workload Identity cluster reach floci-az's Entra. */

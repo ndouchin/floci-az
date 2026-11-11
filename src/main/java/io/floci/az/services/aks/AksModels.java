@@ -41,6 +41,10 @@ public class AksModels {
         private String serviceAccountJwks;
         /** {@code securityProfile.workloadIdentity.enabled}. */
         private Boolean workloadIdentityEnabled;
+        /** {@code emulated}, {@code servicelb} or {@code off}; null for a cluster created before, which keeps servicelb. */
+        private String loadBalancerMode;
+        /** The load balancers floci-az runs for the cluster's Services of type LoadBalancer. */
+        private List<LoadBalancerRecord> loadBalancers;
         /** The Workload Identity webhook's CA and serving certificate, generated once; null when never enabled. */
         private WebhookCertificates workloadIdentityWebhookCertificates;
         private NetworkProfile networkProfile;
@@ -139,6 +143,19 @@ public class AksModels {
             this.workloadIdentityWebhookCertificates = certificates;
         }
 
+        public String getLoadBalancerMode() { return loadBalancerMode; }
+        public void setLoadBalancerMode(String loadBalancerMode) { this.loadBalancerMode = loadBalancerMode; }
+
+        public List<LoadBalancerRecord> getLoadBalancers() { return loadBalancers; }
+        public void setLoadBalancers(List<LoadBalancerRecord> loadBalancers) { this.loadBalancers = loadBalancers; }
+
+        public List<LoadBalancerRecord> loadBalancers() {
+            if (loadBalancers == null) {
+                loadBalancers = new ArrayList<>();
+            }
+            return loadBalancers;
+        }
+
         public boolean oidcIssuerEnabled() {
             return Boolean.TRUE.equals(oidcIssuerEnabled) && oidcIssuerUrl != null;
         }
@@ -233,6 +250,56 @@ public class AksModels {
                 "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
                 subscriptionId, resourceGroup, name);
         }
+    }
+
+    /**
+     * The load balancer of one Service: its addresses, the appliance container holding them, the host ports it
+     * publishes, the backends it last forwarded to, and whether it was reported ensured.
+     */
+    @RegisterForReflection
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class LoadBalancerRecord {
+        private String serviceUid;
+        private String namespace;
+        private String name;
+        private boolean internal;
+        private String address;
+        private String applianceName;
+        private Map<String, Integer> hostPorts;
+        private List<String> backends;
+        private boolean ensured;
+        private String firstSeen;
+
+        public String getServiceUid() { return serviceUid; }
+        public void setServiceUid(String serviceUid) { this.serviceUid = serviceUid; }
+
+        public String getNamespace() { return namespace; }
+        public void setNamespace(String namespace) { this.namespace = namespace; }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+
+        public boolean isInternal() { return internal; }
+        public void setInternal(boolean internal) { this.internal = internal; }
+
+        public String getAddress() { return address; }
+        public void setAddress(String address) { this.address = address; }
+
+        public String getApplianceName() { return applianceName; }
+        public void setApplianceName(String applianceName) { this.applianceName = applianceName; }
+
+        public Map<String, Integer> getHostPorts() { return hostPorts == null ? Map.of() : hostPorts; }
+        public void setHostPorts(Map<String, Integer> hostPorts) { this.hostPorts = hostPorts; }
+
+        public List<String> getBackends() { return backends == null ? List.of() : backends; }
+        public void setBackends(List<String> backends) { this.backends = backends; }
+
+        public boolean isEnsured() { return ensured; }
+        public void setEnsured(boolean ensured) { this.ensured = ensured; }
+
+        public String getFirstSeen() { return firstSeen; }
+        public void setFirstSeen(String firstSeen) { this.firstSeen = firstSeen; }
     }
 
     /** PEM CA certificate and key and serving certificate and key of the Workload Identity webhook. */

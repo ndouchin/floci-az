@@ -91,6 +91,9 @@ final class AksClusterRuntime {
         if (legacy) {
             return args;
         }
+        if (AksLoadBalancerMode.of(cluster) != AksLoadBalancerMode.SERVICELB) {
+            args.add("--disable=servicelb");
+        }
         if (cluster.oidcIssuerEnabled()) {
             args.addAll(issuerArgs(cluster.getOidcIssuerUrl()));
         }

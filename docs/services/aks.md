@@ -27,7 +27,11 @@ be verified, the page says so.
 - **Storage classes** as AKS creates them, with claims that bind
 - **Networking**: `networkProfile` pod and service ranges and DNS address applied to k3s, with AKS's defaults
 - **Credentials**: `listClusterUserCredential` (`clusterUser`) and `listClusterAdminCredential` (`clusterAdmin`)
-  kubeconfigs laid out as AKS writes them; `disableLocalAccounts` refuses the admin one
+  kubeconfigs laid out as AKS writes them; `disableLocalAccounts` refuses the static ones
+- **Microsoft Entra ID**: `aadProfile`, the kubelogin user kubeconfig, Entra tokens authenticated by a token webhook,
+  admin groups bound to `cluster-admin`
+- **Azure RBAC**: `enableAzureRBAC` authorizes requests against [role assignments](authorization.md) through an
+  authorization webhook, with AKS's data actions and Forbidden message
 - **Restore**: in a persistent storage mode, clusters come back at startup on their surviving containers or volumes
 - **Mocked mode**: clusters reach `Succeeded` at once with a synthetic kubeconfig; no Docker required
 
@@ -333,18 +337,125 @@ API server on, not `<dnsPrefix>.hcp.<region>.azmk8s.io:443`.
 
 With `disableLocalAccounts: true`, `listClusterAdminCredential` fails with `400 BadRequest` "Getting static
 credential is not allowed because this cluster is set to disable local accounts." ([local accounts][aks-local],
-[raw error][err-local]); setting it back to `false` gives the admin credential back. The REST spec says the flag
-"must only be used on Managed Clusters that are AAD enabled"; the emulator does not enforce that.
+[raw error][err-local]); setting it back to `false` gives the admin credential back. On a cluster without Microsoft
+Entra integration the user credential fails the same way, since the docs say "any attempt to authenticate with user
+or admin credentials will fail" (the exact body of that case is not verified). On an Entra cluster the user
+credential is the kubelogin kubeconfig described below.
 
-Not emulated (Microsoft Entra integration is out of scope): for Entra-enabled clusters, AKS returns an `exec`
-(kubelogin) user kubeconfig and authenticates Entra tokens; the emulator stores and echoes `aadProfile` and keeps
-handing out the certificate kubeconfig, and the `format` query parameter is ignored.
+---
+
+## Microsoft Entra ID and Azure RBAC
+
+### `aadProfile`
+
+| Field | Behavior |
+|---|---|
+| `managed` | Turns managed Entra integration on; once on it stays on, since AKS can't disable it ([control plane authentication][aks-entra]) |
+| `enableAzureRBAC` | Authorizes Kubernetes requests against Azure role assignments (below) |
+| `adminGroupObjectIDs` | Bound to `cluster-admin`; answered `null` when none were sent, as the spec example `ManagedClustersCreate_UpdateWithEnableAzureRBAC.json` shows |
+| `tenantID` | Defaults to the subscription's tenant |
+| `clientAppID`, `serverAppID` | Legacy fields, stored and returned |
+| `serverAppSecret` | Stored, never returned (`x-ms-secret`) |
+
+A PUT that omits `aadProfile` keeps it. Not verified: the RP's errors for `enableAzureRBAC` without `managed`, a
+`tenantID` other than the subscription's, or a request that turns integration off (the emulator keeps it on).
+
+### User kubeconfig
+
+On an Entra cluster `listClusterUserCredential` returns an exec user, as AKS writes it from Kubernetes 1.24
+([kubelogin authentication][aks-kubelogin]):
+
+```yaml
+users:
+- name: clusterUser_<resourceGroup>_<cluster>
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args: [get-token, --environment, AzurePublicCloud, --server-id, 6dae42f8-4368-4678-94ff-3960e28e3630,
+             --client-id, 80faf920-1908-4b52-b5ef-a8e7bedfc67a, --tenant-id, <tenantID>, --login, devicecode]
+      command: kubelogin
+```
+
+`6dae42f8-...` is the AKS server application, the audience of every kubelogin mode, and `80faf920-...` the public
+client. The az CLI looks for `--login devicecode` and converts the file to `-l azurecli` when kubelogin is installed.
+`format=azure` returns the legacy `azure` auth-provider user (`apiserver-id`, `client-id`, `tenant-id`,
+`environment`, `config-mode: '1'`), the keys kubelogin's `convert-kubeconfig` reads. The admin credential stays the
+certificate kubeconfig. The `installHint`, `env` and `provideClusterInfo` fields are written as commonly observed in
+AKS kubeconfigs; not verified against a Tier 1 source.
+
+kubelogin reaches floci-az only over HTTPS (azidentity refuses a plain HTTP authority) and with
+`--disable-instance-discovery` (MSAL otherwise asks `login.microsoftonline.com` about the host and gets AADSTS50049).
+Either:
+
+- convert to the az CLI mode once the az CLI is signed in to floci-az: `kubelogin convert-kubeconfig -l azurecli`;
+- or set `floci-az.services.aks.entra.kubeconfig-floci-authority=true` (with floci-az TLS on), which appends
+  `--authority-host https://<floci-az>/ --disable-instance-discovery` to the kubeconfig. `convert-kubeconfig` drops
+  those two flags for every mode except `workloadidentity`, so add them again after a conversion.
+
+Tested modes: `spn`, `ropc` and `azurecli` (compat suite `compat-azcli/test/kubelogin.bats`). `devicecode` and
+`interactive` need endpoints floci-az does not serve (device code) or a browser.
+
+### Authentication
+
+An Entra cluster's API server runs with `authentication-token-webhook-config-file` pointing at
+`POST /_floci/aks/clusters/{instanceId}/token-review`, the role AKS's managed webhook plays
+([identity concepts][aks-identity-old]). It does what that webhook (kubeguard/guard, [`auth/providers/azure`][guard-authn])
+does:
+
+- the token must be signed by floci-az's Entra, within its lifetime, issued in the cluster's tenant, for the AKS
+  server application (Entra issues v1.0 tokens with `upn` and `groups` for it, see [Entra](entra.md#access-token-audience-and-version));
+- username = `upn`, else `oid` (service principals and managed identities appear by object id);
+- groups = the `groups` claim (object ids), else the directory's direct memberships; `extra.oid` = the object id.
+
+A refused token gets `401 Unauthorized`. Service account tokens and the admin certificate never reach the webhook.
+
+### Admin groups
+
+`adminGroupObjectIDs` become the ClusterRoleBinding `aks-cluster-admin-binding-aad` to `cluster-admin`, written to
+the k3s auto-deploy directory and rewritten when the list changes ("AKS automatically generates a ClusterRoleBinding
+that binds all of the listed groups to the cluster-admin Kubernetes role", [identity concepts][aks-identity-old]). Its
+name on AKS is not documented. With Azure RBAC the admin groups are "irrelevant", so the binding names no subject.
+
+### Azure RBAC
+
+With `enableAzureRBAC: true` the API server runs `authorization-mode=Node,RBAC,Webhook` with its authorization
+webhook at `POST /_floci/aks/clusters/{instanceId}/subject-access-review`. Kubernetes RBAC answers first, so a
+RoleBinding still grants what it grants and the webhook decides the rest, the union AKS describes
+([authorization concepts][aks-authz]). As guard does ([`authz/providers/azure`][guard-authz]):
+
+| Request | Data action checked |
+|---|---|
+| `get`, `list`, `watch` on `{group}/{resource}` | `Microsoft.ContainerService/managedClusters/{group}/{resource}/read` (no group segment for the core group) |
+| `create`, `update`, `patch` | `.../write` |
+| `delete`, `deletecollection` | `.../delete` |
+| `bind`, `escalate`, `use`, `impersonate` | `.../{verb}/action` |
+| `pods/exec` | `.../pods/exec/action`; other subresources check their resource |
+| non-resource path | `Microsoft.ContainerService/managedClusters/{path}/{action}` |
+
+The scope is `<clusterId>/namespaces/<namespace>` for a namespaced request, else the cluster id, and assignments at
+the cluster, its resource group or its subscription apply below them. The principals are the user's `oid` and its
+groups that are object ids. Users whose name starts with `system:` and users without `extra.oid` (service accounts,
+certificate users, k3s components) get no opinion, so Kubernetes RBAC decides for them. A denial reads, as kubectl
+prints it on AKS ([PIM example][aks-pim]):
+
+```
+Error from server (Forbidden): pods is forbidden: User "<upn>" cannot list resource "pods" in API group "" in the
+namespace "ns2": User does not have access to the resource in Azure. Update role assignment to allow access.
+```
+
+The API server caches webhook answers for `aks.entra.webhook-cache-ttl-seconds` (5 s); AKS documents up to five
+minutes for an assignment to take effect. Wildcard requests (`*` verbs, resources or groups) are checked with the `*`
+kept in the data action, so only a role whose data actions match it by wildcard grants them; guard expands them from
+Azure's operations list. ABAC conditions are not evaluated.
+
+When floci-az is down, Entra users get `401` and Azure RBAC requests are refused; the admin certificate and k3s
+components keep working, since the webhooks never see them or give no opinion.
 
 ---
 
 ## Fields stored and echoed
 
-`aadProfile`, `oidcIssuerProfile`, `securityProfile`, `apiServerAccessProfile`, `addonProfiles`,
+`oidcIssuerProfile`, `securityProfile`, `apiServerAccessProfile`, `addonProfiles`,
 `autoUpgradeProfile`, `autoScalerProfile`, `linuxProfile`, `windowsProfile`, `workloadAutoScalerProfile`,
 `storageProfile`, `ingressProfile`, `azureMonitorProfile`, `identityProfile`, `httpProxyConfig` and the client ID of
 `servicePrincipalProfile` (never its secret) are stored and returned as sent, with no runtime effect. Pool
@@ -380,6 +491,9 @@ floci-az:
       api-server-base-port: 6443
       api-server-max-port: 7443
       keep-running-on-shutdown: false
+      entra:
+        kubeconfig-floci-authority: false
+        webhook-cache-ttl-seconds: 5
 ```
 
 | Environment Variable | Default | Description |
@@ -393,6 +507,8 @@ floci-az:
 | `FLOCI_AZ_SERVICES_AKS_API_SERVER_BASE_PORT` | `6443` | Start of the host port range for k3s API servers |
 | `FLOCI_AZ_SERVICES_AKS_API_SERVER_MAX_PORT` | `7443` | End of the host port range for k3s API servers |
 | `FLOCI_AZ_SERVICES_AKS_KEEP_RUNNING_ON_SHUTDOWN` | `false` | Leave the containers running when floci-az stops. Deleting a cluster always removes its containers, volumes and network |
+| `FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY` | `false` | Append `--authority-host <floci-az HTTPS URL>/ --disable-instance-discovery` to the Entra user kubeconfig |
+| `FLOCI_AZ_SERVICES_AKS_ENTRA_WEBHOOK_CACHE_TTL_SECONDS` | `5` | How long API servers cache the token and authorization webhook answers |
 
 Images pulled in real mode: the k3s tag of each version used, `rancher/local-path-provisioner:v0.0.37`,
 `rancher/mirrored-library-busybox:1.37.0`, and what k3s pulls for itself (CoreDNS, metrics-server, pause).
@@ -460,6 +576,9 @@ Checked on 2026-11-10 and 2026-11-11.
   [OperationNotAllowed upgrade][err-upgrade], [NodePoolMcVersionIncompatible][err-skew],
   [NotAllAgentPoolOrchestratorVersionSpecifiedAndUnchanged][err-notall], [disable local accounts][err-local];
   [`kubectl get sc` on AKS][aks-sc-listing]
+- Entra and Azure RBAC: [control plane authentication][aks-entra], [kubelogin authentication][aks-kubelogin],
+  [authorization concepts][aks-authz], [identity concepts (2025 revision)][aks-identity-old], [PIM example][aks-pim];
+  kubeguard/guard v0.16.28 [authentication][guard-authn] and [authorization][guard-authz]; kubelogin v0.2.22
 
 [spec-mc]: https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/managedClusters.json
 [spec-examples]: https://github.com/Azure/azure-rest-api-specs/tree/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples
@@ -489,3 +608,10 @@ Checked on 2026-11-10 and 2026-11-11.
 [err-notall]: https://github.com/hashicorp/terraform-provider-azurerm/issues/20791
 [err-local]: https://github.com/Azure/caf-terraform-landingzones/issues/416
 [aks-sc-listing]: https://github.com/Azure/AKS/discussions/2784
+[aks-entra]: https://learn.microsoft.com/en-us/azure/aks/entra-id-control-plane-authentication
+[aks-kubelogin]: https://learn.microsoft.com/en-us/azure/aks/kubelogin-authentication
+[aks-authz]: https://learn.microsoft.com/en-us/azure/aks/concepts-cluster-authorization
+[aks-identity-old]: https://github.com/MicrosoftDocs/azure-aks-docs/blob/611a5efc0de581eac904bca48c90156ba75c8431/articles/aks/concepts-identity.md
+[aks-pim]: https://learn.microsoft.com/en-us/azure/aks/privileged-identity-management
+[guard-authn]: https://github.com/kubeguard/guard/blob/v0.16.28/auth/providers/azure/azure.go
+[guard-authz]: https://github.com/kubeguard/guard/blob/v0.16.28/authz/providers/azure/rbac/checkaccessreqhelper.go

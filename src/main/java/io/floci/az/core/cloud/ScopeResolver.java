@@ -104,11 +104,13 @@ public class ScopeResolver {
 
     /**
      * {@code common/userrealm/{username}}: home realm discovery, which MSAL4J and MSAL Python call on
-     * the authority host before a username-password grant. Entra serves it only under {@code common},
-     * so a storage account named {@code common} is the only path it can shadow.
+     * the authority host before a username-password grant, and MSAL Go as {@code common/UserRealm/}. Entra
+     * serves it only under {@code common}, so a storage account named {@code common} is the only path it can
+     * shadow.
      */
     public static boolean isUserRealmPath(String path) {
-        if (!path.startsWith(USER_REALM_PREFIX) || path.length() == USER_REALM_PREFIX.length()) {
+        if (!path.regionMatches(true, 0, USER_REALM_PREFIX, 0, USER_REALM_PREFIX.length())
+                || path.length() == USER_REALM_PREFIX.length()) {
             return false;
         }
         return path.indexOf('/', USER_REALM_PREFIX.length()) < 0;

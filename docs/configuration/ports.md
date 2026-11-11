@@ -45,12 +45,19 @@ These ports are resolved at runtime via the Docker daemon: you never configure t
 |---|---|---|---|
 | Azure SQL Database (`managed`) | `mssql/server` | TDS (SQL Server) | `GET /{account}-sql/servers/{name}/connect` → `port` field |
 | Azure Kubernetes Service | `rancher/k3s` | HTTPS (Kubernetes API) | `POST .../listClusterAdminCredential` → `kubeconfigs[0].value` → `server:` in kubeconfig |
+| Azure Red Hat OpenShift | MicroShift (`quay.io/minc-org/minc`) | HTTPS (API server, router) | `apiserverProfile.url`, `docker port floci-az-aro-<id>`; host ports from `7600-7699` |
 | Cosmos MongoDB | `mongo` | MongoDB wire | `GET /{account}-cosmosmongo/connect` → `port` field |
 | Cosmos PostgreSQL | `postgres` | PostgreSQL | `GET /{account}-cosmospostgresql/connect` → `port` field |
 | Cosmos Cassandra | `cassandra` | CQL | `GET /{account}-cosmoscassandra/connect` → `port` field |
 | Cosmos Gremlin | _(embedded)_ | WebSocket | `GET /{account}-cosmosgremlin/connect` |
 | Event Hubs (AMQP) | `activemq-artemis` | AMQP 1.0 | Fixed at `5672` (host-bound by Artemis) |
 | Event Hubs (Kafka) | `redpanda` | Kafka | Fixed at `9093` (host-bound by Redpanda) |
+
+### Ports floci-az binds for sidecars
+
+| Range | Service | Purpose |
+|---|---|---|
+| `7700-7799` | Azure Red Hat OpenShift | One API proxy per cluster, which serves the OpenShift OAuth server (`oc login`) and forwards to the MicroShift container. Bound by floci-az itself: when floci-az runs in Docker, publish the range on the floci-az container (`"7700-7799:7700-7799"`). Change it with `FLOCI_AZ_SERVICES_ARO_PROXY_BASE_PORT` / `_MAX_PORT` |
 
 > **Do NOT add sidecar ports to the `floci-az` service's `ports:` section** in Docker Compose.
 > The Docker daemon creates those containers and binds their ports directly to the host.

@@ -793,6 +793,55 @@ public interface EmulatorConfig {
         /** When {@code true}, MicroShift containers are left running when floci-az shuts down. */
         @WithDefault("false")
         boolean keepRunningOnShutdown();
+
+        /**
+         * Start of the host port range of the API proxy floci-az runs in front of each cluster's MicroShift API server
+         * (one port per cluster, bound by floci-az itself; the cluster's API URL points at it).
+         */
+        @WithDefault("7700")
+        int proxyBasePort();
+
+        /** End of the API proxy port range. */
+        @WithDefault("7799")
+        int proxyMaxPort();
+
+        /** The OpenShift OAuth server the API proxy serves, for {@code oc login} and the console. */
+        AroOAuthConfig oauth();
+
+        /** The OpenShift web console on each real-mode cluster. */
+        AroConsoleConfig console();
+    }
+
+    interface AroConsoleConfig {
+        /**
+         * Unset: on when the Docker daemon is amd64, and on arm64 only when {@link #image()} is changed, since the OKD
+         * console image is published for amd64 only. Applies to clusters created from now on.
+         */
+        Optional<Boolean> enabled();
+
+        /**
+         * The console image, pulled by the cluster itself: OKD 4.19.0-okd-scos.17's payload console
+         * ({@code oc adm release info quay.io/okd/scos-release:4.19.0-okd-scos.17 --image-for=console}).
+         */
+        @WithDefault("quay.io/okd/scos-content@sha256:ba8cac1946833f0b26e657affe2c0eb46c2c0352bb293bd4b932f2f7e50dedab")
+        String image();
+
+        /** How long the console has to become available after the cluster is ready before floci-az logs it. */
+        @WithDefault("600")
+        int readyTimeoutSeconds();
+    }
+
+    interface AroOAuthConfig {
+        /**
+         * When {@code true}, clusters created from now on get the API proxy and the OAuth server, and their API URL is
+         * the proxy's. {@code false} keeps MicroShift's API server as the API URL, without {@code oc login}.
+         */
+        @WithDefault("true")
+        boolean enabled();
+
+        /** Lifetime of the access tokens the OAuth server issues; OpenShift's default is 24 hours. */
+        @WithDefault("86400")
+        long accessTokenMaxAgeSeconds();
     }
 
     /** Microsoft.App — managed environments and Docker-backed Container Apps. */

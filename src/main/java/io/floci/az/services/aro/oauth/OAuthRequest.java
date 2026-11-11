@@ -70,7 +70,9 @@ public record OAuthRequest(String method, String path, String rawQuery, String h
             for (String pair : header.split(";")) {
                 int eq = pair.indexOf('=');
                 if (eq > 0 && pair.substring(0, eq).trim().equals(name)) {
-                    return pair.substring(eq + 1).trim();
+                    String value = pair.substring(eq + 1).trim();
+                    return value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")
+                            ? value.substring(1, value.length() - 1) : value;
                 }
             }
         }

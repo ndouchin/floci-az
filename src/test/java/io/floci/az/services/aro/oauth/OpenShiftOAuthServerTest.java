@@ -224,6 +224,10 @@ class OpenShiftOAuthServerTest {
         String cookie = loggedIn.header("Set-Cookie").split(";")[0];
         assertTrue(cookie.startsWith("ssn="), cookie);
 
+        String rfc2965 = "$Version=\"1\"; ssn=\"" + cookie.substring(4) + "\";$Path=\"/\"";
+        assertEquals(302, server.handle(get(authorize, HOST, Map.of("Cookie", List.of(rfc2965)))).status());
+        assertTrue(server.handle(get(authorize, HOST, Map.of("Cookie", List.of(rfc2965)))).header("Location")
+                .startsWith(callback), "a quoted cookie value, as java.net.CookieManager sends it, is a session too");
         OAuthResponse withCode = server.handle(get(authorize, HOST, Map.of("Cookie", List.of(cookie))));
         assertEquals(302, withCode.status());
         String location = withCode.header("Location");

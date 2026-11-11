@@ -793,6 +793,33 @@ public interface EmulatorConfig {
         /** When {@code true}, MicroShift containers are left running when floci-az shuts down. */
         @WithDefault("false")
         boolean keepRunningOnShutdown();
+
+        /**
+         * Start of the host port range of the API proxy floci-az runs in front of each cluster's MicroShift API server
+         * (one port per cluster, bound by floci-az itself; the cluster's API URL points at it).
+         */
+        @WithDefault("7700")
+        int proxyBasePort();
+
+        /** End of the API proxy port range. */
+        @WithDefault("7799")
+        int proxyMaxPort();
+
+        /** The OpenShift OAuth server the API proxy serves, for {@code oc login} and the console. */
+        AroOAuthConfig oauth();
+    }
+
+    interface AroOAuthConfig {
+        /**
+         * When {@code true}, clusters created from now on get the API proxy and the OAuth server, and their API URL is
+         * the proxy's. {@code false} keeps MicroShift's API server as the API URL, without {@code oc login}.
+         */
+        @WithDefault("true")
+        boolean enabled();
+
+        /** Lifetime of the access tokens the OAuth server issues; OpenShift's default is 24 hours. */
+        @WithDefault("86400")
+        long accessTokenMaxAgeSeconds();
     }
 
     /** Microsoft.App — managed environments and Docker-backed Container Apps. */

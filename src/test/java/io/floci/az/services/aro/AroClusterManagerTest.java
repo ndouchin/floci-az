@@ -164,6 +164,96 @@ class AroClusterManagerTest {
     }
 
     @Test
+    void onTheHostWithALocalDaemonTheApiUrlIsTheProxyOnLocalhost() {
+        OpenShiftCluster cluster = proxiedCluster();
+
+        startableManager().startCluster(cluster);
+
+        assertEquals(7700, cluster.getProxyPort());
+        assertEquals("https://localhost:7700", cluster.getEndpoint());
+        assertEquals("https://localhost:7600", cluster.getInternalEndpoint());
+    }
+
+    @Test
+    void inDockerTheApiUrlNamesFlociAzWhichTheCertificateCarries() {
+        lenient().when(containerDetector.isRunningInContainer()).thenReturn(true);
+        lenient().when(config.hostname()).thenReturn(Optional.of("floci-az"));
+        OpenShiftCluster cluster = proxiedCluster();
+        AroClusterManager manager = startableManager();
+        lenient().when(lifecycleManager.startCreated(eq("cid"), any())).thenReturn(new ContainerInfo("cid",
+                Map.of(6443, new ContainerLifecycleManager.EndpointInfo("172.18.0.5", 6443))));
+
+        manager.startCluster(cluster);
+
+        assertEquals("https://floci-az:7700", cluster.getEndpoint());
+        assertEquals("https://172.18.0.5:6443", cluster.getInternalEndpoint());
+        assertTrue(dropIn().contains("- \"floci-az\""), dropIn());
+    }
+
+    @Test
+    void inPublishedModeWithALoopbackDaemonTheApiUrlIsTheProxyOnLocalhost() {
+        lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
+        lenient().when(lifecycleManager.daemonHost()).thenReturn("127.0.0.1");
+        lenient().when(lifecycleManager.daemonAddress()).thenReturn("127.0.0.1");
+        OpenShiftCluster cluster = proxiedCluster();
+
+        startableManager().startCluster(cluster);
+
+        assertEquals("https://localhost:7700", cluster.getEndpoint());
+        assertEquals("https://localhost:7600", cluster.getInternalEndpoint());
+        assertFalse(dropIn().contains("localhost"), dropIn());
+    }
+
+    @Test
+    void inPublishedModeWithARemoteDaemonClientsReachFlociAzAndFlociAzReachesTheDaemon() {
+        lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
+        lenient().when(lifecycleManager.daemonHost()).thenReturn("192.168.5.2");
+        lenient().when(lifecycleManager.daemonAddress()).thenReturn("192.168.5.2");
+        lenient().when(config.hostname()).thenReturn(Optional.empty());
+        lenient().when(config.effectiveBaseUrl()).thenReturn("http://floci.example:4577");
+        OpenShiftCluster cluster = proxiedCluster();
+
+        startableManager().startCluster(cluster);
+
+        assertEquals("https://floci.example:7700", cluster.getEndpoint());
+        assertEquals("https://192.168.5.2:7600", cluster.getInternalEndpoint());
+        assertTrue(dropIn().contains("- \"floci.example\""), dropIn());
+        assertTrue(dropIn().contains("- \"192.168.5.2\""), dropIn());
+    }
+
+    @Test
+    void aRestoredClusterKeepsItsProxyPortAndAClusterWithoutOneKeepsItsDirectUrl() {
+        OpenShiftCluster proxied = proxiedCluster();
+        proxied.setProxyPort(7705);
+        proxied.setContainerId("old");
+        lenient().when(lifecycleManager.presence("old")).thenReturn(ContainerPresence.RUNNING);
+        lenient().when(lifecycleManager.adopt(eq("old"), any())).thenReturn(new ContainerInfo("old", Map.of(),
+                Map.of(6443, 7610, 80, 7611, 443, 7612)));
+
+        assertEquals(AroClusterManager.Restore.ADOPTED, startableManager().restore(proxied));
+        assertEquals("https://localhost:7705", proxied.getEndpoint());
+        assertEquals("https://localhost:7610", proxied.getInternalEndpoint());
+        verify(portAllocator).reserveUnprobed(7705);
+
+        OpenShiftCluster legacy = startableCluster();
+        startableManager().startCluster(legacy);
+        assertEquals(0, legacy.getProxyPort());
+        assertEquals("https://localhost:7600", legacy.getEndpoint());
+    }
+
+    private OpenShiftCluster proxiedCluster() {
+        OpenShiftCluster cluster = startableCluster();
+        cluster.setOauthEnabled(true);
+        return cluster;
+    }
+
+    private String dropIn() {
+        ArgumentCaptor<Map<String, byte[]>> files = ArgumentCaptor.forClass(Map.class);
+        verify(lifecycleManager).copyFilesToContainer(eq("cid"), files.capture());
+        return new String(files.getValue().get(AroManifests.CONFIG_DROP_IN));
+    }
+
+    @Test
     void finalizeCreatesTheKubeadminSecretOnceWithABcryptOfThePassword() {
         OpenShiftCluster cluster = finalizableCluster();
         List<List<String>> commands = recordExecs(command -> true);
@@ -237,6 +327,9 @@ class AroClusterManagerTest {
         lenient().when(config.docker().logMaxFile()).thenReturn("3");
         lenient().when(lifecycleManager.daemonArchitecture()).thenReturn("x86_64");
         lenient().when(portAllocator.allocate(7600, 7699)).thenReturn(7600, 7601, 7602);
+        lenient().when(config.services().aro().proxyBasePort()).thenReturn(7700);
+        lenient().when(config.services().aro().proxyMaxPort()).thenReturn(7799);
+        lenient().when(portAllocator.allocate(7700, 7799)).thenReturn(7700);
         lenient().when(lifecycleManager.create(any())).thenReturn("cid");
         lenient().when(lifecycleManager.startCreated(eq("cid"), any())).thenReturn(new ContainerInfo("cid", Map.of()));
         return new AroClusterManager(realBuilder, lifecycleManager, containerDetector, portAllocator, config);

@@ -20,6 +20,7 @@ import io.floci.az.core.cloud.CloudDefaults;
 import io.floci.az.core.storage.StorageFactory;
 import io.floci.az.services.aro.AroModels.OpenShiftCluster;
 import io.floci.az.services.aro.AroProperties.InvalidProperty;
+import io.floci.az.services.aro.oauth.OAuthToken;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -102,6 +103,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     private final EmulatorConfig config;
     private final AroClusterManager clusterManager;
+    private final AroProxyManager proxyManager;
     private final CloudDefaults defaults;
     private final ArmResourceStore<OpenShiftCluster> store;
     private final Map<String, AroOperation> operations = new LinkedHashMap<>();
@@ -147,10 +149,11 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
     }
 
     @Inject
-    public AroHandler(EmulatorConfig config, AroClusterManager clusterManager, StorageFactory storageFactory,
-                      CloudDefaults defaults) {
+    public AroHandler(EmulatorConfig config, AroClusterManager clusterManager, AroProxyManager proxyManager,
+                      StorageFactory storageFactory, CloudDefaults defaults) {
         this.config = config;
         this.clusterManager = clusterManager;
+        this.proxyManager = proxyManager;
         this.defaults = defaults;
         this.store = ArmResourceStore.create(storageFactory, "aro", OpenShiftCluster.class, OpenShiftCluster::armId,
                 key -> false);
@@ -173,6 +176,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (mocked()) {
             return;
         }
+        proxyManager.stopAll();
         for (OpenShiftCluster cluster : scanAll()) {
             try {
                 clusterManager.stopCluster(cluster);
@@ -312,6 +316,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         cluster.setInfraId(infraId(name));
         cluster.setClusterUuid(AroProperties.newClusterUuid());
         cluster.setKubeadminPassword(kubeadminPassword());
+        cluster.setOauthEnabled(!mocked() && config.services().aro().oauth().enabled());
         cluster.setImageTag(versions.resolve(version).orElseThrow().tag());
         cluster.setCreatedAt(Instant.now());
 
@@ -605,6 +610,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     private void remove(OpenShiftCluster cluster) {
         try {
+            proxyManager.stop(cluster);
             clusterManager.removeCluster(cluster);
         } catch (RuntimeException e) {
             LOG.warnv("Error removing the MicroShift container of ARO cluster {0}: {1}", cluster.getName(),
@@ -629,6 +635,10 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         }
         if (!SUCCEEDED.equals(state) && !CREATING.equals(state) && !UPDATING.equals(state)) {
             return;
+        }
+        if (!cluster.isOauthEnabled() && config.services().aro().oauth().enabled()) {
+            LOG.infov("ARO cluster {0} was stored without an API proxy: it keeps its direct API URL and has no OAuth "
+                    + "server, so oc login needs a cluster created from now on", cluster.getName());
         }
         try {
             AroClusterManager.Restore outcome = clusterManager.restore(cluster);
@@ -661,6 +671,9 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
                     succeed(cluster);
                 } else if (CREATING.equals(cluster.getProvisioningState())) {
                     pollCreating(cluster);
+                } else if (SUCCEEDED.equals(cluster.getProvisioningState()) && cluster.getProxyPort() > 0
+                        && cluster.getContainerId() != null && !proxyManager.running(cluster)) {
+                    startProxy(cluster);
                 }
             }
         } catch (RuntimeException e) {
@@ -681,6 +694,12 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         }
         try {
             clusterManager.finalizeCluster(cluster);
+            if (cluster.getProxyPort() > 0) {
+                proxyManager.ensureStarted(cluster, tokens -> persistTokens(cluster, tokens));
+                if (!proxyManager.metadataAnswers(cluster)) {
+                    throw new IllegalStateException("the API proxy does not serve the OAuth metadata yet");
+                }
+            }
         } catch (RuntimeException e) {
             String previous = finalizeErrors.put(cluster.getInstanceId(), String.valueOf(e.getMessage()));
             if (!String.valueOf(e.getMessage()).equals(previous)) {
@@ -696,6 +715,23 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
             stored.setKubeadminSecretCreated(cluster.isKubeadminSecretCreated());
         });
         succeed(cluster);
+    }
+
+    /** Starts the API proxy of a ready cluster whose proxy is not running (adopted at startup, or a failed start). */
+    private void startProxy(OpenShiftCluster cluster) {
+        try {
+            proxyManager.ensureStarted(cluster, tokens -> persistTokens(cluster, tokens));
+            finalizeErrors.remove(cluster.getInstanceId());
+        } catch (RuntimeException e) {
+            String previous = finalizeErrors.put(cluster.getInstanceId(), String.valueOf(e.getMessage()));
+            if (!String.valueOf(e.getMessage()).equals(previous)) {
+                LOG.warnv("ARO cluster {0}: {1}", cluster.getName(), e.getMessage());
+            }
+        }
+    }
+
+    private void persistTokens(OpenShiftCluster cluster, Map<String, OAuthToken> tokens) {
+        mutate(cluster, stored -> stored.setOauthTokens(tokens));
     }
 
     private void succeed(OpenShiftCluster cluster) {
@@ -736,6 +772,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         to.setApiHostPort(from.getApiHostPort());
         to.setHttpHostPort(from.getHttpHostPort());
         to.setHttpsHostPort(from.getHttpsHostPort());
+        to.setProxyPort(from.getProxyPort());
         to.setEndpoint(from.getEndpoint());
         to.setInternalEndpoint(from.getInternalEndpoint());
         to.setPublicIp(from.getPublicIp());
@@ -973,6 +1010,7 @@ public class AroHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (!mocked()) {
             for (OpenShiftCluster cluster : scanAll()) {
                 try {
+                    proxyManager.stop(cluster);
                     clusterManager.removeCluster(cluster);
                 } catch (RuntimeException e) {
                     LOG.warnv("Error removing ARO cluster {0} during reset: {1}", cluster.getName(), e.getMessage());

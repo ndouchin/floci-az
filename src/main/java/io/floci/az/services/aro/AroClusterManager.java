@@ -106,6 +106,15 @@ public class AroClusterManager {
                 ports.add(portAllocator.allocate(config.services().aro().basePort(),
                         config.services().aro().maxPort()));
             }
+            if (cluster.isOauthEnabled()) {
+                if (cluster.getProxyPort() > 0) {
+                    portAllocator.reserveUnprobed(cluster.getProxyPort());
+                } else {
+                    cluster.setProxyPort(portAllocator.allocate(config.services().aro().proxyBasePort(),
+                            config.services().aro().proxyMaxPort()));
+                }
+                ports.add(cluster.getProxyPort());
+            }
         } catch (RuntimeException e) {
             ports.forEach(portAllocator::release);
             throw e;
@@ -185,6 +194,9 @@ public class AroClusterManager {
             cluster.setApiHostPort(claim(info, API_PORT, cluster.getApiHostPort()));
             cluster.setHttpHostPort(claim(info, ROUTER_HTTP_PORT, cluster.getHttpHostPort()));
             cluster.setHttpsHostPort(claim(info, ROUTER_HTTPS_PORT, cluster.getHttpsHostPort()));
+            if (cluster.getProxyPort() > 0) {
+                portAllocator.reserveUnprobed(cluster.getProxyPort());
+            }
             applyEndpoints(cluster, containerName, info);
             LOG.infov("Adopted MicroShift container {0} of ARO cluster {1}", containerId, cluster.getName());
             return Restore.ADOPTED;
@@ -309,7 +321,8 @@ public class AroClusterManager {
         lifecycleManager.removeIfExists(containerName);
         lifecycleManager.removeVolume(containerName + "-data");
         lifecycleManager.removeVolume(containerName + "-storage");
-        for (int port : List.of(cluster.getApiHostPort(), cluster.getHttpHostPort(), cluster.getHttpsHostPort())) {
+        for (int port : List.of(cluster.getApiHostPort(), cluster.getHttpHostPort(), cluster.getHttpsHostPort(),
+                cluster.getProxyPort())) {
             if (port > 0) {
                 portAllocator.release(port);
             }
@@ -340,7 +353,14 @@ public class AroClusterManager {
 
     AroManifests.Settings settings(OpenShiftCluster cluster, String containerName) {
         String fullDomain = AroProperties.fullDomain(cluster.clusterProfileValue("domain"), cluster.getLocation());
-        return new AroManifests.Settings(fullDomain, nodeName(cluster), subjectAltNames(containerName, fullDomain),
+        List<String> names = subjectAltNames(containerName, fullDomain);
+        if (cluster.isOauthEnabled()) {
+            String proxyHost = proxyHost();
+            if (!isLoopback(proxyHost) && !names.contains(proxyHost)) {
+                names.add(proxyHost);
+            }
+        }
+        return new AroManifests.Settings(fullDomain, nodeName(cluster), names,
                 cluster.networkProfileValue("podCidr"), cluster.networkProfileValue("serviceCidr"),
                 cluster.getClusterUuid(), config.services().aro().storageProvisionerImage(),
                 config.services().aro().storageHelperImage(),
@@ -375,26 +395,73 @@ public class AroClusterManager {
         return namespaces.size() == CORE_NAMESPACES.size() && namespaces.values().stream().allMatch(b -> b);
     }
 
+    /**
+     * Where floci-az reaches MicroShift's API server ({@code internalEndpoint}: readiness probes and the proxy's
+     * upstream) and where clients reach the cluster ({@code endpoint}): the API proxy when the cluster has one, else
+     * MicroShift itself, as before the proxy existed.
+     */
     private void applyEndpoints(OpenShiftCluster cluster, String containerName, ContainerInfo info) {
+        String direct;
         if (lifecycleManager.publishedEndpoints()) {
             // MicroShift's loopback certificate names localhost only, and it refuses loopback extra names.
             String host = "127.0.0.1".equals(lifecycleManager.daemonAddress()) ? "localhost"
                     : lifecycleManager.daemonHost();
-            cluster.setEndpoint("https://" + host + ":" + cluster.getApiHostPort());
-            cluster.setInternalEndpoint(cluster.getEndpoint());
+            direct = "https://" + host + ":" + cluster.getApiHostPort();
+            cluster.setInternalEndpoint(direct);
             cluster.setPublicIp(ipOf(lifecycleManager.daemonAddress()));
         } else if (containerDetector.isRunningInContainer()) {
-            cluster.setEndpoint("https://" + containerName + ":" + API_PORT);
+            direct = "https://" + containerName + ":" + API_PORT;
             EndpointInfo endpoint = info.getEndpoint(API_PORT);
-            cluster.setInternalEndpoint(endpoint != null
-                    ? "https://" + endpoint.host() + ":" + endpoint.port()
-                    : cluster.getEndpoint());
+            cluster.setInternalEndpoint(endpoint != null ? "https://" + endpoint.host() + ":" + endpoint.port() : direct);
             cluster.setPublicIp(endpoint != null ? ipOf(endpoint.host()) : "127.0.0.1");
         } else {
-            cluster.setEndpoint("https://localhost:" + cluster.getApiHostPort());
-            cluster.setInternalEndpoint(cluster.getEndpoint());
+            direct = "https://localhost:" + cluster.getApiHostPort();
+            cluster.setInternalEndpoint(direct);
             cluster.setPublicIp("127.0.0.1");
         }
+        cluster.setEndpoint(cluster.getProxyPort() > 0 ? "https://" + proxyHost() + ":" + cluster.getProxyPort() : direct);
+    }
+
+    /**
+     * The host in a proxied cluster's API URL: {@code localhost} when floci-az runs on the host and the Docker daemon
+     * is local, since the proxy listens in floci-az's own process; otherwise floci-az's host name ({@code hostname},
+     * else the host of {@code base-url}), which clients must reach on the proxy port.
+     */
+    String proxyHost() {
+        boolean local = lifecycleManager.publishedEndpoints()
+                ? "127.0.0.1".equals(lifecycleManager.daemonAddress())
+                : !containerDetector.isRunningInContainer();
+        if (local) {
+            return "localhost";
+        }
+        return config.hostname().filter(h -> !h.isBlank())
+                .orElseGet(() -> URI.create(config.effectiveBaseUrl()).getHost());
+    }
+
+    /** MicroShift's PEM files the API proxy serves and presents, read from the running container. */
+    AroApiProxy.Certificates proxyCertificates(OpenShiftCluster cluster) {
+        String certs = DATA_DIR + "/certs/";
+        return new AroApiProxy.Certificates(
+                read(cluster, certs + "kube-apiserver-localhost-signer/kube-apiserver-localhost-serving/server.crt"),
+                read(cluster, certs + "kube-apiserver-localhost-signer/kube-apiserver-localhost-serving/server.key"),
+                read(cluster, certs + "kube-apiserver-external-signer/kube-external-serving/server.crt"),
+                read(cluster, certs + "kube-apiserver-external-signer/kube-external-serving/server.key"),
+                read(cluster, certs + "ca-bundle/client-ca.crt"),
+                read(cluster, certs + "aggregator-signer/aggregator-client/client.crt"),
+                read(cluster, certs + "aggregator-signer/aggregator-client/client.key"));
+    }
+
+    private String read(OpenShiftCluster cluster, String path) {
+        ExecResult result = lifecycleManager.execInContainer(cluster.getContainerId(), "cat", path);
+        if (result.exitCode() != 0 || !result.output().contains("-----BEGIN")) {
+            throw new IllegalStateException("cannot read " + path + ": " + result.output().strip());
+        }
+        return result.output();
+    }
+
+    private static boolean isLoopback(String host) {
+        return host == null || "localhost".equals(host) || host.startsWith("127.") || "::1".equals(host)
+                || "[::1]".equals(host);
     }
 
     private int claim(ContainerInfo info, int containerPort, int recorded) {

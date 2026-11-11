@@ -58,9 +58,11 @@ public class AroModels {
         private int httpHostPort;
         private int httpsHostPort;
         /**
-         * The host port of the API proxy floci-az runs in front of MicroShift, which serves the OAuth server; 0 for a
-         * cluster without one (created with {@code oauth.enabled=false}, or stored before the proxy existed).
+         * Whether the cluster gets the API proxy and the OAuth server: {@code oauth.enabled} when it was created, false
+         * for clusters stored before the proxy existed, which keep their direct API URL.
          */
+        private boolean oauthEnabled;
+        /** The host port of the API proxy floci-az runs in front of MicroShift; 0 for a cluster without one. */
         private int proxyPort;
         /** The access tokens the cluster's OAuth server issued, by object name. */
         private Map<String, OAuthToken> oauthTokens;
@@ -141,6 +143,9 @@ public class AroModels {
 
         public int getHttpsHostPort() { return httpsHostPort; }
         public void setHttpsHostPort(int httpsHostPort) { this.httpsHostPort = httpsHostPort; }
+
+        public boolean isOauthEnabled() { return oauthEnabled; }
+        public void setOauthEnabled(boolean oauthEnabled) { this.oauthEnabled = oauthEnabled; }
 
         public int getProxyPort() { return proxyPort; }
         public void setProxyPort(int proxyPort) { this.proxyPort = proxyPort; }

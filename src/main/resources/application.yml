@@ -314,6 +314,11 @@ floci-az:
       storage-provisioner-image: "docker.io/rancher/local-path-provisioner:v0.0.37"
       storage-helper-image: "docker.io/library/busybox:1.37"
       keep-running-on-shutdown: false
+      proxy-base-port: 7700 # host ports of the API proxy floci-az runs per cluster (OAuth server, oc login)
+      proxy-max-port: 7799
+      oauth:
+        enabled: true       # false = API URL straight to MicroShift, no oc login (new clusters only)
+        access-token-max-age-seconds: 86400
     aci:
       enabled: true
       mocked: true          # true = no Docker; container groups are pure ARM state (Succeeded/Running). false = back groups with real containers (shared-netns pods)

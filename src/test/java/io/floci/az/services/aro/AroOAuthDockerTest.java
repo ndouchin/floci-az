@@ -63,18 +63,24 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * proxy, exec over WebSocket, a watch, logout, and kubeadmin's removal. When an {@code oc} binary is on the
  * {@code PATH} (or named by {@code FLOCI_OC}), the same is checked with {@code oc} itself.
  *
+ * <p>The cluster's domain resolves to the host ({@code *.127.0.0.1.nip.io}), so the OpenShift web console is checked
+ * on the same cluster: a cookie-jar client logs in as {@code kube:admin} the way a browser does, calls the API through
+ * the console and logs out. Those steps are skipped when the Docker daemon is not amd64 (the console image has no
+ * arm64 build).</p>
+ *
  * <p>Skipped without Docker, like {@link AroDockerTest}.</p>
  */
 @QuarkusTest
 @TestProfile(AroDockerTest.RealModeProfile.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@DisplayName("ARO oc login through the API proxy (Docker required)")
+@DisplayName("ARO oc login and console through the API proxy (Docker required)")
 class AroOAuthDockerTest {
 
     private static final String SUB = "00000000-0000-0000-0000-0000000000d2";
     private static final String RG = "aro-oauth-rg";
     private static final String NAME = "aro-oauth";
+    private static final String DOMAIN = "arooauth.127.0.0.1.nip.io";
     private static final String API = "?api-version=2025-07-25";
     private static final String CLUSTER = "/subscriptions/" + SUB + "/resourceGroups/" + RG
             + "/providers/Microsoft.RedHatOpenShift/openShiftClusters/" + NAME;
@@ -91,6 +97,9 @@ class AroOAuthDockerTest {
     private String caPem;
     private String token;
     private String podName;
+    private String consoleUrl;
+    private String kubeconfig;
+    private AroConsoleBrowser browser;
 
     @BeforeAll
     void checkDockerAvailable() {
@@ -103,8 +112,8 @@ class AroOAuthDockerTest {
     void theClusterIsSucceededWithItsApiUrlOnTheProxy() throws Exception {
         given().post("/_admin/reset").then().statusCode(204);
         Response created = given().contentType("application/json").body("""
-            {"location": "eastus", "properties": {"clusterProfile": {"domain": "arooauth", "version": "4.19.2"}}}
-            """).when().put(CLUSTER + API);
+            {"location": "eastus", "properties": {"clusterProfile": {"domain": "%s", "version": "4.19.2"}}}
+            """.formatted(DOMAIN)).when().put(CLUSTER + API);
         created.then().statusCode(201);
         String operation = URI.create(created.header("Azure-AsyncOperation")).getPath() + API;
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(15).toMillis();
@@ -120,7 +129,7 @@ class AroOAuthDockerTest {
 
         password = given().contentType("application/json").when().post(CLUSTER + "/listCredentials" + API)
                 .then().statusCode(200).extract().path("kubeadminPassword");
-        String kubeconfig = new String(Base64.getDecoder().decode((String) given().contentType("application/json")
+        kubeconfig = new String(Base64.getDecoder().decode((String) given().contentType("application/json")
                 .when().post(CLUSTER + "/listAdminCredentials" + API).then().statusCode(200).extract()
                 .path("kubeconfig")), StandardCharsets.UTF_8);
         assertTrue(kubeconfig.contains("server: " + apiUrl), kubeconfig);
@@ -130,6 +139,10 @@ class AroOAuthDockerTest {
         tls = trusting(caPem);
         http = HttpClient.newBuilder().sslContext(tls).version(HttpClient.Version.HTTP_1_1)
                 .followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(10)).build();
+        consoleUrl = given().when().get(CLUSTER + API).path("properties.consoleProfile.url");
+        assertTrue(consoleUrl.matches("https://console-openshift-console\\.apps\\." + DOMAIN.replace(".", "\\.")
+                + ":76\\d\\d/"), consoleUrl);
+        consoleUrl = consoleUrl.substring(0, consoleUrl.length() - 1);
     }
 
     @Test
@@ -309,6 +322,81 @@ class AroOAuthDockerTest {
 
     @Test
     @Order(8)
+    void theConsoleBecomesAvailableWithItsRouteAndConsolePublic() throws Exception {
+        assumeTrue("amd64".equals(admin.get("/api/v1/nodes").path("items").get(0).path("status").path("nodeInfo")
+                .path("architecture").asText()), "the console image is amd64 only");
+        admin.await("/apis/apps/v1/namespaces/openshift-console/deployments/console",
+                deployment -> deployment.path("status").path("availableReplicas").asInt() >= 1, Duration.ofMinutes(6));
+        assertEquals(consoleUrl, admin.get("/api/v1/namespaces/openshift-config-managed/configmaps/console-public")
+                .path("data").path("consoleURL").asText());
+        assertEquals("console-openshift-console.apps." + DOMAIN, admin.get(
+                "/apis/route.openshift.io/v1/namespaces/openshift-console/routes/console").path("spec").path("host")
+                .asText());
+        HttpResponse<String> redirect = send("GET", "/console", null, Map.of());
+        assertEquals(302, redirect.statusCode());
+        assertEquals(consoleUrl, redirect.headers().firstValue("Location").orElseThrow());
+        browser = new AroConsoleBrowser(consoleUrl);
+    }
+
+    @Test
+    @Order(9)
+    void aBrowserLogsInToTheConsoleAsKubeAdminAndCallsTheApiThroughIt() throws Exception {
+        assumeTrue(browser != null, "no console on this Docker daemon");
+        String authorize = AroConsoleBrowser.location(browser.awaitRedirect(consoleUrl + "/auth/login"));
+        assertTrue(authorize.startsWith("https://api." + DOMAIN + ":"), authorize);
+        assertTrue(authorize.contains("client_id=console"), authorize);
+        assertTrue(authorize.contains("redirect_uri=" + enc(consoleUrl + "/auth/callback")), authorize);
+
+        HttpResponse<String> toLoginPage = browser.get(authorize);
+        assertEquals(302, toLoginPage.statusCode());
+        String loginPage = AroConsoleBrowser.location(toLoginPage);
+        assertTrue(loginPage.contains("/login/kube:admin?then="), loginPage);
+        HttpResponse<String> page = browser.get(loginPage);
+        assertEquals(200, page.statusCode());
+        Matcher then = Pattern.compile("name=\"then\" value=\"([^\"]+)\"").matcher(page.body());
+        assertTrue(then.find(), page.body());
+        HttpResponse<String> posted = browser.postForm(loginPage.replaceAll("\\?.*$", ""), "then="
+                + enc(then.group(1).replace("&amp;", "&")) + "&username=kubeadmin&password=" + enc(password));
+        assertEquals(302, posted.statusCode(), posted.body());
+        HttpResponse<String> granted = browser.get(AroConsoleBrowser.location(posted));
+        assertEquals(302, granted.statusCode(), granted.body());
+        String callback = AroConsoleBrowser.location(granted);
+        assertTrue(callback.startsWith(consoleUrl + "/auth/callback?code="), callback);
+        browser.get(callback);
+        browser.get(consoleUrl + "/");
+
+        HttpResponse<String> review = browser.api("POST",
+                "/api/kubernetes/apis/authentication.k8s.io/v1/selfsubjectreviews",
+                "{\"apiVersion\":\"authentication.k8s.io/v1\",\"kind\":\"SelfSubjectReview\"}");
+        assertEquals(201, review.statusCode(), review.body());
+        JsonNode user = MAPPER.readTree(review.body()).path("status").path("userInfo");
+        assertEquals("kube:admin", user.path("username").asText());
+        assertTrue(user.path("groups").toString().contains("system:cluster-admins"), user.toString());
+        assertEquals(200, browser.api("GET", "/api/kubernetes/api/v1/namespaces", null).statusCode());
+    }
+
+    @Test
+    @Order(10)
+    void loggingOutOfTheConsoleRevokesItsToken() throws Exception {
+        assumeTrue(browser != null, "no console on this Docker daemon");
+        HttpResponse<String> logout = browser.api("POST", "/api/console/logout", "");
+        assertEquals(204, logout.statusCode(), logout.body());
+        assertEquals(401, browser.api("GET", "/api/kubernetes/api/v1/namespaces", null).statusCode());
+    }
+
+    @Test
+    @Order(11)
+    void ocWhoamiShowsTheConsole() throws Exception {
+        String oc = ocBinary();
+        assumeTrue(oc != null && browser != null, "no oc binary on the PATH or in FLOCI_OC, or no console");
+        Path file = Files.createTempDirectory("aro-console-oc").resolve("kubeconfig");
+        Files.writeString(file, kubeconfig);
+        assertEquals(consoleUrl, run(Map.of(), oc, "--kubeconfig", file.toString(), "whoami", "--show-console")
+                .strip());
+    }
+
+    @Test
+    @Order(12)
     void deletingTheTokenObjectLogsOut() throws Exception {
         String name = OAuthTokens.objectName(token);
         HttpResponse<String> deleted = send("DELETE", "/apis/oauth.openshift.io/v1/oauthaccesstokens/" + name,
@@ -319,7 +407,7 @@ class AroOAuthDockerTest {
     }
 
     @Test
-    @Order(9)
+    @Order(13)
     void deletingTheKubeadminSecretDisablesKubeadmin() throws Exception {
         String before = loginToken(password);
         HttpResponse<String> deleted = adminSend("DELETE", "/api/v1/namespaces/kube-system/secrets/kubeadmin");
@@ -331,7 +419,7 @@ class AroOAuthDockerTest {
     }
 
     @Test
-    @Order(10)
+    @Order(14)
     void deletingTheClusterStopsTheProxy() throws Exception {
         given().when().delete(CLUSTER + API).then().statusCode(202);
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();

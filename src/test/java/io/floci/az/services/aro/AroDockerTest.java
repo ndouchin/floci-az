@@ -58,13 +58,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * An ARO cluster created through ARM on a real MicroShift container, then checked through its admin kubeconfig from
  * outside the container: the node, SCC admission, a Route on the apps domain, a PVC on the default storage class, the
- * {@code config.openshift.io} objects, and the cleanup on delete.
+ * {@code config.openshift.io} objects, and the cleanup on delete. The cluster is created with
+ * {@code oauth.enabled=false}, so its API URL is MicroShift's own port, as before the API proxy existed, and its console
+ * runs without login as its ServiceAccount; {@link AroOAuthDockerTest} covers a cluster with the proxy.
  *
  * <p>Skipped without Docker. MicroShift needs a privileged container on a cgroup v2, rootful daemon; the API answers
  * after about a minute and every pod runs after two to three, so the cluster gets 15 minutes.
  */
 @QuarkusTest
-@TestProfile(AroDockerTest.RealModeProfile.class)
+@TestProfile(AroDockerTest.DirectProfile.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("AroHandler: real MicroShift cluster (Docker required)")
@@ -82,11 +84,21 @@ class AroDockerTest {
         }
     }
 
+    /** {@link RealModeProfile} without the API proxy and the OAuth server. */
+    public static class DirectProfile implements QuarkusTestProfile {
+        @Override
+        public Map<String, String> getConfigOverrides() {
+            return Map.of("floci-az.services.aro.mocked", "false",
+                    "floci-az.docker.endpoint-mode", "published",
+                    "floci-az.services.aro.oauth.enabled", "false");
+        }
+    }
+
     private static final String SUB = "00000000-0000-0000-0000-0000000000d1";
     private static final String RG = "aro-docker-rg";
     private static final String NAME = "aro-docker";
-    private static final String DOMAIN = "arodock";
-    private static final String FULL_DOMAIN = DOMAIN + ".eastus.aroapp.io";
+    private static final String DOMAIN = "arodock.127.0.0.1.nip.io";
+    private static final String FULL_DOMAIN = DOMAIN;
     private static final String API = "?api-version=2025-07-25";
     private static final String CLUSTER = "/subscriptions/" + SUB + "/resourceGroups/" + RG
             + "/providers/Microsoft.RedHatOpenShift/openShiftClusters/" + NAME;
@@ -137,7 +149,7 @@ class AroDockerTest {
         assertEquals("Succeeded", status, "operation: " + given().when().get(operationPath).asString());
         given().when().get(CLUSTER + API).then().statusCode(200)
                 .body("properties.provisioningState", equalTo("Succeeded"))
-                .body("properties.apiserverProfile.url", startsWith("https://"))
+                .body("properties.apiserverProfile.url", matchesPattern("https://localhost:76\\d\\d/"))
                 .body("properties.consoleProfile.url",
                         matchesPattern("https://console-openshift-console\\.apps\\." + FULL_DOMAIN.replace(".", "\\.")
                                 + ":76\\d\\d/"));
@@ -266,6 +278,25 @@ class AroDockerTest {
 
     @Test
     @Order(8)
+    void withoutTheOAuthServerTheConsoleRunsWithoutLoginAsItsServiceAccount() throws Exception {
+        assumeTrue("amd64".equals(kube.get("/api/v1/nodes").path("items").get(0).path("status").path("nodeInfo")
+                .path("architecture").asText()), "the console image is amd64 only");
+        kube.await("/apis/apps/v1/namespaces/openshift-console/deployments/console",
+                deployment -> deployment.path("status").path("availableReplicas").asInt() >= 1, Duration.ofMinutes(6));
+        String consoleUrl = given().when().get(CLUSTER + API).path("properties.consoleProfile.url");
+        consoleUrl = consoleUrl.substring(0, consoleUrl.length() - 1);
+        AroConsoleBrowser browser = new AroConsoleBrowser(consoleUrl);
+        browser.await(consoleUrl + "/", 200);
+        HttpResponse<String> review = browser.api("POST",
+                "/api/kubernetes/apis/authentication.k8s.io/v1/selfsubjectreviews",
+                "{\"apiVersion\":\"authentication.k8s.io/v1\",\"kind\":\"SelfSubjectReview\"}");
+        assertEquals(201, review.statusCode(), review.body());
+        assertEquals("system:serviceaccount:openshift-console:console", MAPPER.readTree(review.body())
+                .path("status").path("userInfo").path("username").asText());
+    }
+
+    @Test
+    @Order(9)
     void deletingRemovesTheContainerAndItsVolumes() throws InterruptedException {
         given().when().delete(CLUSTER + API).then().statusCode(202);
         long deadline = System.currentTimeMillis() + Duration.ofMinutes(2).toMillis();

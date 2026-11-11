@@ -311,7 +311,8 @@ How it differs from a real cluster:
   (`console.openshift.io`). Which pages are affected was not surveyed page by page.
 - **Without the OAuth server** (`oauth.enabled=false`), the console has no login page: it runs with
   `--user-auth=disabled` and its ServiceAccount's token (also "DEV ONLY" upstream), bound to `cluster-admin`, so every
-  visitor acts as `system:serviceaccount:openshift-console:console`.
+  visitor acts as `system:serviceaccount:openshift-console:console` (measured: a SelfSubjectReview through the
+  console answers that user).
 
 ---
 
@@ -384,7 +385,6 @@ no OAuth server, and the log says so at startup; recreate it to get `oc login`.
 - Which `oc` release first asks for a SelfSubjectReview before `users/~` (oc commit `a9e0887fbb`, 2023, about 4.15);
   both are served for kubeadmin.
 - floci-az in Docker, a remote Docker daemon and Docker Desktop with the API proxy (see the table above).
-- The console without the OAuth server (`oauth.enabled=false`) was checked by unit tests only.
 
 [spec]: https://github.com/Azure/azure-rest-api-specs/tree/main/specification/redhatopenshift/resource-manager/Microsoft.RedHatOpenShift/OpenShiftClusters/stable/2025-07-25
 [arorp-frontend]: https://github.com/Azure/ARO-RP/tree/master/pkg/frontend

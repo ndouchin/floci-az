@@ -12,7 +12,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** The ARM resource types {@link PolicyHandler} serves. */
+/**
+ * The ARM resource types of {@code Microsoft.Authorization}: the policy types {@link PolicyHandler} serves and the role
+ * types {@code AuthorizationHandler} serves. {@code ArmTypeRegistry} takes one surface per namespace, so the two
+ * services share this one.
+ */
 @ApplicationScoped
 public class PolicyArmSurface implements ArmSurfaceProvider {
 
@@ -39,7 +43,9 @@ public class PolicyArmSurface implements ArmSurfaceProvider {
             new ArmResourceType(NAMESPACE, "policyExemptions", ArmScopeKind.EXTENSION, LocationPolicy.OPTIONAL)
                 .withName(POLICY_NAME),
             new ArmResourceType(NAMESPACE, "policySetDefinitions", ArmScopeKind.SUBSCRIPTION, LocationPolicy.NONE)
-                .withName(POLICY_NAME))));
+                .withName(POLICY_NAME),
+            new ArmResourceType(NAMESPACE, "roleAssignments", ArmScopeKind.EXTENSION, LocationPolicy.NONE),
+            new ArmResourceType(NAMESPACE, "roleDefinitions", ArmScopeKind.EXTENSION, LocationPolicy.NONE))));
 
     @Override
     public List<ArmSurface> armSurfaces() {

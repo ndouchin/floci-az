@@ -1,0 +1,301 @@
+{
+  "_source": "MicrosoftDocs/azure-docs@99f04393e8b8c1d2ae086627cb48465800060447 articles/role-based-access-control/built-in-roles/{containers,general,privileged}.md, JSON blocks copied verbatim",
+  "roleDefinitions": [
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "List cluster admin credential action.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/0ab0b1a8-8aac-4efd-b8c2-3ee1fb270be8",
+      "name": "0ab0b1a8-8aac-4efd-b8c2-3ee1fb270be8",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.ContainerService/managedClusters/listClusterAdminCredential/action",
+            "Microsoft.ContainerService/managedClusters/accessProfiles/listCredential/action",
+            "Microsoft.ContainerService/managedClusters/read",
+            "Microsoft.ContainerService/managedClusters/runcommand/action"
+          ],
+          "notActions": [],
+          "dataActions": [],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Azure Kubernetes Service Cluster Admin Role",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "List cluster user credential action.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/4abbcc35-e782-43d8-92c5-2d3f1bd2253f",
+      "name": "4abbcc35-e782-43d8-92c5-2d3f1bd2253f",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
+            "Microsoft.ContainerService/managedClusters/read"
+          ],
+          "notActions": [],
+          "dataActions": [],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Azure Kubernetes Service Cluster User Role",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Lets you manage all resources under cluster/namespace, except update or delete resource quotas and namespaces.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/3498e952-d568-435e-9b2c-8d77e338d7f7",
+      "name": "3498e952-d568-435e-9b2c-8d77e338d7f7",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.Authorization/*/read",
+            "Microsoft.Resources/subscriptions/operationresults/read",
+            "Microsoft.Resources/subscriptions/read",
+            "Microsoft.Resources/subscriptions/resourceGroups/read",
+            "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action"
+          ],
+          "notActions": [],
+          "dataActions": [
+            "Microsoft.ContainerService/managedClusters/*"
+          ],
+          "notDataActions": [
+            "Microsoft.ContainerService/managedClusters/resourcequotas/write",
+            "Microsoft.ContainerService/managedClusters/resourcequotas/delete",
+            "Microsoft.ContainerService/managedClusters/namespaces/write",
+            "Microsoft.ContainerService/managedClusters/namespaces/delete"
+          ]
+        }
+      ],
+      "roleName": "Azure Kubernetes Service RBAC Admin",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Lets you manage all resources in the cluster.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b",
+      "name": "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.Authorization/*/read",
+            "Microsoft.Resources/subscriptions/operationresults/read",
+            "Microsoft.Resources/subscriptions/read",
+            "Microsoft.Resources/subscriptions/resourceGroups/read",
+            "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action"
+          ],
+          "notActions": [],
+          "dataActions": [
+            "Microsoft.ContainerService/managedClusters/*"
+          ],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Azure Kubernetes Service RBAC Cluster Admin",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Allows read-only access to see most objects in a namespace. It does not allow viewing roles or role bindings. This role does not allow viewing Secrets, since reading the contents of Secrets enables access to ServiceAccount credentials in the namespace, which would allow API access as any ServiceAccount in the namespace (a form of privilege escalation). Applying this role at cluster scope will give access across all namespaces.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/7f6c6a51-bcf8-42ba-9220-52d62157d7db",
+      "name": "7f6c6a51-bcf8-42ba-9220-52d62157d7db",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.Authorization/*/read",
+            "Microsoft.Resources/subscriptions/operationresults/read",
+            "Microsoft.Resources/subscriptions/read",
+            "Microsoft.Resources/subscriptions/resourceGroups/read"
+          ],
+          "notActions": [],
+          "dataActions": [
+            "Microsoft.ContainerService/managedClusters/apps/controllerrevisions/read",
+            "Microsoft.ContainerService/managedClusters/apps/daemonsets/read",
+            "Microsoft.ContainerService/managedClusters/apps/deployments/read",
+            "Microsoft.ContainerService/managedClusters/apps/replicasets/read",
+            "Microsoft.ContainerService/managedClusters/apps/statefulsets/read",
+            "Microsoft.ContainerService/managedClusters/autoscaling/horizontalpodautoscalers/read",
+            "Microsoft.ContainerService/managedClusters/batch/cronjobs/read",
+            "Microsoft.ContainerService/managedClusters/batch/jobs/read",
+            "Microsoft.ContainerService/managedClusters/configmaps/read",
+            "Microsoft.ContainerService/managedClusters/discovery.k8s.io/endpointslices/read",
+            "Microsoft.ContainerService/managedClusters/endpoints/read",
+            "Microsoft.ContainerService/managedClusters/events.k8s.io/events/read",
+            "Microsoft.ContainerService/managedClusters/events/read",
+            "Microsoft.ContainerService/managedClusters/extensions/daemonsets/read",
+            "Microsoft.ContainerService/managedClusters/extensions/deployments/read",
+            "Microsoft.ContainerService/managedClusters/extensions/ingresses/read",
+            "Microsoft.ContainerService/managedClusters/extensions/networkpolicies/read",
+            "Microsoft.ContainerService/managedClusters/extensions/replicasets/read",
+            "Microsoft.ContainerService/managedClusters/limitranges/read",
+            "Microsoft.ContainerService/managedClusters/metrics.k8s.io/pods/read",
+            "Microsoft.ContainerService/managedClusters/metrics.k8s.io/nodes/read",
+            "Microsoft.ContainerService/managedClusters/namespaces/read",
+            "Microsoft.ContainerService/managedClusters/networking.k8s.io/ingresses/read",
+            "Microsoft.ContainerService/managedClusters/networking.k8s.io/networkpolicies/read",
+            "Microsoft.ContainerService/managedClusters/persistentvolumeclaims/read",
+            "Microsoft.ContainerService/managedClusters/pods/read",
+            "Microsoft.ContainerService/managedClusters/policy/poddisruptionbudgets/read",
+            "Microsoft.ContainerService/managedClusters/replicationcontrollers/read",
+            "Microsoft.ContainerService/managedClusters/resourcequotas/read",
+            "Microsoft.ContainerService/managedClusters/serviceaccounts/read",
+            "Microsoft.ContainerService/managedClusters/services/read"
+          ],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Azure Kubernetes Service RBAC Reader",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Allows read/write access to most objects in a namespace.This role does not allow viewing or modifying roles or role bindings. However, this role allows accessing Secrets and running Pods as any ServiceAccount in the namespace, so it can be used to gain the API access levels of any ServiceAccount in the namespace. Applying this role at cluster scope will give access across all namespaces.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/a7ffa36f-339b-4b5c-8bdf-e2c188b2c0eb",
+      "name": "a7ffa36f-339b-4b5c-8bdf-e2c188b2c0eb",
+      "permissions": [
+        {
+          "actions": [
+            "Microsoft.Authorization/*/read",
+            "Microsoft.Resources/subscriptions/operationresults/read",
+            "Microsoft.Resources/subscriptions/read",
+            "Microsoft.Resources/subscriptions/resourceGroups/read"
+          ],
+          "notActions": [],
+          "dataActions": [
+            "Microsoft.ContainerService/managedClusters/apps/controllerrevisions/read",
+            "Microsoft.ContainerService/managedClusters/apps/daemonsets/*",
+            "Microsoft.ContainerService/managedClusters/apps/deployments/*",
+            "Microsoft.ContainerService/managedClusters/apps/replicasets/*",
+            "Microsoft.ContainerService/managedClusters/apps/statefulsets/*",
+            "Microsoft.ContainerService/managedClusters/autoscaling/horizontalpodautoscalers/*",
+            "Microsoft.ContainerService/managedClusters/batch/cronjobs/*",
+            "Microsoft.ContainerService/managedClusters/coordination.k8s.io/leases/read",
+            "Microsoft.ContainerService/managedClusters/coordination.k8s.io/leases/write",
+            "Microsoft.ContainerService/managedClusters/coordination.k8s.io/leases/delete",
+            "Microsoft.ContainerService/managedClusters/discovery.k8s.io/endpointslices/read",
+            "Microsoft.ContainerService/managedClusters/batch/jobs/*",
+            "Microsoft.ContainerService/managedClusters/configmaps/*",
+            "Microsoft.ContainerService/managedClusters/endpoints/*",
+            "Microsoft.ContainerService/managedClusters/events.k8s.io/events/read",
+            "Microsoft.ContainerService/managedClusters/events/*",
+            "Microsoft.ContainerService/managedClusters/extensions/daemonsets/*",
+            "Microsoft.ContainerService/managedClusters/extensions/deployments/*",
+            "Microsoft.ContainerService/managedClusters/extensions/ingresses/*",
+            "Microsoft.ContainerService/managedClusters/extensions/networkpolicies/*",
+            "Microsoft.ContainerService/managedClusters/extensions/replicasets/*",
+            "Microsoft.ContainerService/managedClusters/limitranges/read",
+            "Microsoft.ContainerService/managedClusters/metrics.k8s.io/pods/read",
+            "Microsoft.ContainerService/managedClusters/metrics.k8s.io/nodes/read",
+            "Microsoft.ContainerService/managedClusters/namespaces/read",
+            "Microsoft.ContainerService/managedClusters/networking.k8s.io/ingresses/*",
+            "Microsoft.ContainerService/managedClusters/networking.k8s.io/networkpolicies/*",
+            "Microsoft.ContainerService/managedClusters/persistentvolumeclaims/*",
+            "Microsoft.ContainerService/managedClusters/pods/*",
+            "Microsoft.ContainerService/managedClusters/policy/poddisruptionbudgets/*",
+            "Microsoft.ContainerService/managedClusters/replicationcontrollers/*",
+            "Microsoft.ContainerService/managedClusters/resourcequotas/read",
+            "Microsoft.ContainerService/managedClusters/secrets/*",
+            "Microsoft.ContainerService/managedClusters/serviceaccounts/*",
+            "Microsoft.ContainerService/managedClusters/services/*"
+          ],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Azure Kubernetes Service RBAC Writer",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Grants full access to manage all resources, but does not allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share image galleries.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "name": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "permissions": [
+        {
+          "actions": [
+            "*"
+          ],
+          "notActions": [
+            "Microsoft.Authorization/*/Delete",
+            "Microsoft.Authorization/*/Write",
+            "Microsoft.Authorization/elevateAccess/Action",
+            "Microsoft.Blueprint/blueprintAssignments/write",
+            "Microsoft.Blueprint/blueprintAssignments/delete",
+            "Microsoft.Compute/galleries/share/action",
+            "Microsoft.Purview/consents/write",
+            "Microsoft.Purview/consents/delete",
+            "Microsoft.Resources/deploymentStacks/manageDenySetting/action",
+            "Microsoft.Subscription/cancel/action",
+            "Microsoft.Subscription/enable/action"
+          ],
+          "dataActions": [],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Contributor",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "Grants full access to manage all resources, including the ability to assign roles in Azure RBAC.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+      "name": "8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+      "permissions": [
+        {
+          "actions": [
+            "*"
+          ],
+          "notActions": [],
+          "dataActions": [],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Owner",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    },
+    {
+      "assignableScopes": [
+        "/"
+      ],
+      "description": "View all resources, but does not allow you to make any changes.",
+      "id": "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7",
+      "name": "acdd72a7-3385-48ef-bd42-f606fba81ae7",
+      "permissions": [
+        {
+          "actions": [
+            "*/read"
+          ],
+          "notActions": [],
+          "dataActions": [],
+          "notDataActions": []
+        }
+      ],
+      "roleName": "Reader",
+      "roleType": "BuiltInRole",
+      "type": "Microsoft.Authorization/roleDefinitions"
+    }
+  ]
+}

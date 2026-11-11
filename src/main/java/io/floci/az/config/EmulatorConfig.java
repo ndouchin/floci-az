@@ -369,6 +369,7 @@ public interface EmulatorConfig {
         DeploymentsConfig      deployments();
         ContainerAppsConfig    containerApps();
         PolicyConfig           policy();
+        AuthorizationConfig    authorization();
         ResourceGraphConfig    resourceGraph();
         ManagementGroupsConfig managementGroups();
 
@@ -513,6 +514,15 @@ public interface EmulatorConfig {
          */
         @WithDefault("true")
         boolean insights();
+    }
+
+    /**
+     * Azure RBAC under Microsoft.Authorization: role definitions (built-in catalog and custom roles) and role
+     * assignments at every scope, evaluated by AKS's Azure RBAC authorization webhook.
+     */
+    interface AuthorizationConfig {
+        @WithDefault("true")
+        boolean enabled();
     }
 
     /**

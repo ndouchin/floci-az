@@ -208,6 +208,9 @@ public class BannerLogger {
                 "Microsoft.Authorization policy (definitions, set definitions, assignments, exemptions"
                         + (config.services().policy().enforcement() ? ", rule evaluation on writes" : ", no evaluation")
                         + (config.services().policy().insights() ? ", PolicyInsights compliance)" : ")")));
+        sb.append(String.format("   %-9s [%s]  %s\n", "rbac",
+                config.services().authorization().enabled() ? "enabled " : "disabled",
+                "Microsoft.Authorization role definitions and role assignments (Azure RBAC)"));
         sb.append(String.format("   %-9s [%s]  %s\n", "graph-rg",
                 config.services().resourceGraph().enabled() ? "enabled " : "disabled",
                 "Microsoft.ResourceGraph (KQL queries over resources, resource containers, policy resources)"));

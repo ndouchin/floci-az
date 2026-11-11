@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,21 +71,24 @@ class AksDeleteKeepRunningTest {
         handler = new AksHandler(config, containers, factory, CloudDefaults.catalogOnly());
     }
 
-    @Test
-    void deletingAClusterRemovesItsContainerAndVolumeEvenWhenClustersAreKeptRunning() throws Exception {
-        AzureRequest delete = new AzureRequest("DELETE", "arm", "aks",
+    private static AzureRequest request(String method) {
+        return new AzureRequest(method, "arm", "aks",
             "subscriptions/sub-keep/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/cluster1",
             null, null, Map.of("api-version", "2024-05-01"), null, false);
+    }
 
-        Response response = handler.handle(delete);
+    @Test
+    void deletingAClusterRemovesItsContainerAndVolumeEvenWhenClustersAreKeptRunning() throws Exception {
+        Response response = handler.handle(request("DELETE"));
 
         assertThat(response.getStatus(), is(202));
+        verify(lifecycle, timeout(10_000)).stopAndRemove(eq("cid-kept0001"), any());
+        verify(lifecycle, timeout(10_000)).removeVolume("floci-az-aks-kept0001");
         long deadline = System.currentTimeMillis() + 10_000;
-        while (backend.get(KEY).isPresent() && System.currentTimeMillis() < deadline) {
+        while (handler.handle(request("GET")).getStatus() != 404 && System.currentTimeMillis() < deadline) {
             Thread.sleep(50);
         }
-        verify(lifecycle).stopAndRemove(eq("cid-kept0001"), any());
-        verify(lifecycle).removeVolume("floci-az-aks-kept0001");
+        assertThat(handler.handle(request("GET")).getStatus(), is(404));
         assertFalse(backend.get(KEY).isPresent(), "the deleted cluster's record is gone");
     }
 

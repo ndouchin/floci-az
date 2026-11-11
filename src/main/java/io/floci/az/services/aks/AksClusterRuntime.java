@@ -46,6 +46,11 @@ final class AksClusterRuntime {
         return args;
     }
 
+    /** Files k3s reads only when it starts (absolute path to content); they count as server arguments. */
+    Map<String, String> startupFiles(ManagedCluster cluster) {
+        return Map.of();
+    }
+
     /** Manifests k3s applies from its auto-deploy directory: the storage classes AKS creates. */
     Map<String, String> manifests(ManagedCluster cluster) {
         Version controlPlane = Version.parse(cluster.getCurrentKubernetesVersion()).orElseGet(versions::defaultVersion);

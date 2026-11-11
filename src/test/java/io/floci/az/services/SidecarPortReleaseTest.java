@@ -240,7 +240,7 @@ class SidecarPortReleaseTest {
     }
 
     private static void startAks(AksClusterManager manager, ManagedCluster cluster) {
-        manager.prepareServer(cluster, "rancher/k3s:test", List.of("server"), Map.of());
+        manager.prepareServer(cluster, "rancher/k3s:test", List.of("server"), Map.of(), Map.of());
     }
 
     private AcrRegistryManager acr() {

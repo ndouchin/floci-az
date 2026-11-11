@@ -85,7 +85,7 @@ class AksLifecycleRealModeTest {
             cluster.setEndpoint("https://localhost:6500");
             cluster.setInternalEndpoint("https://localhost:6500");
             return AksClusterManager.ServerStart.CREATED_FRESH;
-        }).when(clusterManager).prepareServer(any(), anyString(), anyList(), anyMap());
+        }).when(clusterManager).prepareServer(any(), anyString(), anyList(), anyMap(), anyMap());
         doAnswer(inv -> {
             ManagedCluster cluster = inv.getArgument(0);
             cluster.setCaData("Q0E=");
@@ -172,7 +172,7 @@ class AksLifecycleRealModeTest {
         awaitState("lro3", "Succeeded");
 
         given().get(BASE + "lro3" + API).then().body("properties.agentPoolProfiles[0].count", equalTo(3));
-        verify(clusterManager, atLeast(2)).prepareServer(any(), anyString(), anyList(), anyMap());
+        verify(clusterManager, atLeast(2)).prepareServer(any(), anyString(), anyList(), anyMap(), anyMap());
     }
 
     @Test
@@ -190,7 +190,7 @@ class AksLifecycleRealModeTest {
         awaitState("lro4", "Succeeded");
 
         ArgumentCaptor<String> images = ArgumentCaptor.forClass(String.class);
-        verify(clusterManager, atLeast(2)).prepareServer(any(), images.capture(), anyList(), anyMap());
+        verify(clusterManager, atLeast(2)).prepareServer(any(), images.capture(), anyList(), anyMap(), anyMap());
         List<String> seen = images.getAllValues();
         assertEquals("rancher/k3s:v1.35.10-k3s1", seen.getFirst());
         assertEquals("rancher/k3s:v1.36.6-k3s1", seen.getLast());

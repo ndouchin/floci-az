@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,9 +41,14 @@ public class AksClusterManager {
     static final String STORAGE_DIR = "/var/lib/floci-aks-storage";
     static final String ROLE_LABEL = "io.floci.aks.role";
     static final String NODE_LABEL = "io.floci.aks.node";
+    /** Hash of the arguments and start-up files a server container was created with. */
+    static final String SERVER_ARGS_LABEL = "io.floci.aks.server-args";
 
     /** How a server container came to run, which tells whether the cluster kept its CA. */
     enum ServerStart { ADOPTED, RECREATED_ON_VOLUME, CREATED_FRESH }
+
+    /** What to do with the cluster's server container. */
+    enum ServerDecision { ADOPT, REPLACE, CREATE }
 
     private final ContainerBuilder containerBuilder;
     private final ContainerLifecycleManager lifecycleManager;
@@ -74,34 +80,73 @@ public class AksClusterManager {
 
     /**
      * Makes the cluster's k3s server run {@code image} with {@code args}: adopts a surviving container created from
-     * that image, otherwise replaces it on the same data volume (an upgrade or a lost container keeps the cluster's
-     * state and CA), otherwise creates it on a fresh volume. {@code manifests} (file name to content) are dropped
-     * into the k3s auto-deploy directory before a new container starts. Sets the container id, host port, image and
-     * endpoints on {@code cluster}.
+     * that image with those arguments, otherwise replaces it on the same data volume (an upgrade, changed arguments or
+     * a lost container keep the cluster's state and CA), otherwise creates it on a fresh volume. {@code startupFiles}
+     * (absolute path to content) are files k3s reads only when it starts, such as webhook kubeconfigs: they count as
+     * arguments. {@code manifests} (file name to content) are dropped into the k3s auto-deploy directory before a new
+     * container starts. Sets the container id, host port, image, argument hash and endpoints on {@code cluster}.
      */
     public ServerStart prepareServer(ManagedCluster cluster, String image, List<String> args,
-                                     Map<String, String> manifests) {
+                                     Map<String, String> startupFiles, Map<String, String> manifests) {
         String name = containerName(cluster);
         lifecycleManager.ensureNetwork(networkName(cluster), identityLabels(cluster));
         Optional<Container> existing = lifecycleManager.findByName(name);
-        if (existing.isPresent() && image.equals(existing.get().getImage())) {
-            adoptServer(cluster, existing.get().getId());
+        String hash = serverHash(args, startupFiles);
+        ServerDecision decision = serverDecision(existing, image, hash, cluster.getServerArgsHash());
+        if (decision == ServerDecision.ADOPT) {
+            adoptServer(cluster, existing.orElseThrow().getId());
             cluster.setServerImage(image);
+            cluster.setServerArgsHash(hash);
             return ServerStart.ADOPTED;
         }
         if (existing.isPresent()) {
-            LOG.infov("AKS cluster {0}: replacing k3s server {1} with image {2} on the same data volume",
-                    cluster.getName(), existing.get().getImage(), image);
+            LOG.infov("AKS cluster {0}: replacing k3s server {1} with image {2}{3} on the same data volume",
+                    cluster.getName(), existing.get().getImage(), image,
+                    image.equals(existing.get().getImage()) ? " and new arguments" : "");
             lifecycleManager.stopAndRemove(existing.get().getId(), null);
         }
         releaseHostPort(cluster.getContainerId());
         boolean volumeExisted = lifecycleManager.volumeExists(name);
-        createServer(cluster, image, args, manifests);
+        Map<String, String> files = new LinkedHashMap<>(startupFiles);
+        manifests.forEach((file, content) -> files.put(MANIFESTS_DIR + "/" + file, content));
+        createServer(cluster, image, args, files, hash);
         cluster.setServerImage(image);
+        cluster.setServerArgsHash(hash);
         return volumeExisted ? ServerStart.RECREATED_ON_VOLUME : ServerStart.CREATED_FRESH;
     }
 
-    private void createServer(ManagedCluster cluster, String image, List<String> args, Map<String, String> manifests) {
+    /**
+     * Adopt a container of the same image whose argument label matches. A container without the label was created
+     * before arguments were recorded: it is adopted as it runs while the record names no arguments or the same ones,
+     * and replaced once the record's arguments change.
+     */
+    static ServerDecision serverDecision(Optional<Container> existing, String image, String hash,
+                                         String recordedHash) {
+        if (existing.isEmpty()) {
+            return ServerDecision.CREATE;
+        }
+        if (!image.equals(existing.get().getImage())) {
+            return ServerDecision.REPLACE;
+        }
+        Map<String, String> labels = existing.get().getLabels();
+        String label = labels == null ? null : labels.get(SERVER_ARGS_LABEL);
+        if (label != null) {
+            return label.equals(hash) ? ServerDecision.ADOPT : ServerDecision.REPLACE;
+        }
+        return recordedHash == null || recordedHash.equals(hash) ? ServerDecision.ADOPT : ServerDecision.REPLACE;
+    }
+
+    /** The hash of a server's arguments, in order, and of its start-up files, by path. */
+    static String serverHash(List<String> args, Map<String, String> startupFiles) {
+        StringBuilder text = new StringBuilder();
+        args.forEach(arg -> text.append(arg).append('\n'));
+        new TreeMap<>(startupFiles).forEach((path, content) ->
+                text.append("--- ").append(path).append('\n').append(content).append('\n'));
+        return AksHashes.sha256Hex(text.toString()).substring(0, 32);
+    }
+
+    private void createServer(ManagedCluster cluster, String image, List<String> args, Map<String, String> files,
+                              String hash) {
         String containerName = containerName(cluster);
         LOG.infov("Starting k3s server for AKS cluster {0} using image {1}", cluster.getName(), image);
         // Pulled before the port is reserved, so a slow pull does not hold the reservation.
@@ -117,6 +162,7 @@ public class AksClusterManager {
                     .withName(containerName)
                     .withLabels(identityLabels(cluster))
                     .withLabel(ROLE_LABEL, "server")
+                    .withLabel(SERVER_ARGS_LABEL, hash)
                     .withCmd(args)
                     .withEnv("K3S_KUBECONFIG_MODE", "644")
                     .withEnv("K3S_TOKEN", cluster.getClusterToken())
@@ -127,11 +173,10 @@ public class AksClusterManager {
                     .withLogRotation()
                     .build();
             containerId = lifecycleManager.create(spec);
-            if (!manifests.isEmpty()) {
-                Map<String, byte[]> files = new LinkedHashMap<>();
-                manifests.forEach((file, content) ->
-                        files.put(MANIFESTS_DIR + "/" + file, content.getBytes(StandardCharsets.UTF_8)));
-                lifecycleManager.copyFilesToContainer(containerId, files);
+            if (!files.isEmpty()) {
+                Map<String, byte[]> bytes = new LinkedHashMap<>();
+                files.forEach((path, content) -> bytes.put(path, content.getBytes(StandardCharsets.UTF_8)));
+                lifecycleManager.copyFilesToContainer(containerId, bytes);
             }
             ContainerLifecycleManager.ContainerInfo info = lifecycleManager.startCreated(containerId, spec);
             hostPorts.put(info.containerId(), hostPort);

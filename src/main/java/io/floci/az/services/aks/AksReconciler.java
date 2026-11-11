@@ -115,7 +115,7 @@ final class AksReconciler {
         String image = versions.image(version);
         boolean hadCredentials = cluster.getCaData() != null;
         AksClusterManager.ServerStart start = manager.prepareServer(cluster, image, runtime.serverArgs(cluster),
-                runtime.manifests(cluster));
+                runtime.startupFiles(cluster), runtime.manifests(cluster));
         if (start == AksClusterManager.ServerStart.CREATED_FRESH && hadCredentials) {
             LOG.warnv("AKS cluster {0} lost its data volume and was recreated empty: its CA changed, fetch its"
                     + " credentials again", cluster.getName());
@@ -124,6 +124,7 @@ final class AksReconciler {
             current.setContainerId(cluster.getContainerId());
             current.setHostPort(cluster.getHostPort());
             current.setServerImage(cluster.getServerImage());
+            current.setServerArgsHash(cluster.getServerArgsHash());
             current.setEndpoint(cluster.getEndpoint());
             current.setInternalEndpoint(cluster.getInternalEndpoint());
             if (cluster.getEndpoint() != null) {

@@ -44,6 +44,8 @@ public class AksModels {
         private Integer hostPort;
         /** Image the k3s server container was created from. */
         private String serverImage;
+        /** Hash of the arguments the k3s server runs with; null for a server recorded before it was kept. */
+        private String serverArgsHash;
         /** Shared secret agents join the server with; kept so a restored or upgraded server accepts them. */
         private String clusterToken;
         /** Base64-encoded certificate authority data from the cluster. */
@@ -123,6 +125,9 @@ public class AksModels {
 
         public String getServerImage() { return serverImage; }
         public void setServerImage(String serverImage) { this.serverImage = serverImage; }
+
+        public String getServerArgsHash() { return serverArgsHash; }
+        public void setServerArgsHash(String serverArgsHash) { this.serverArgsHash = serverArgsHash; }
 
         public String getClusterToken() { return clusterToken; }
         public void setClusterToken(String clusterToken) { this.clusterToken = clusterToken; }

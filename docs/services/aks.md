@@ -32,6 +32,8 @@ be verified, the page says so.
   admin groups bound to `cluster-admin`
 - **Azure RBAC**: `enableAzureRBAC` authorizes requests against [role assignments](authorization.md) through an
   authorization webhook, with AKS's data actions and Forbidden message
+- **Workload Identity**: the OIDC issuer (on by default), service account tokens under its AKS-format URL, the
+  upstream mutating webhook add-on, and the token exchange at floci-az's Entra from pods (floci-az TLS required)
 - **Restore**: in a persistent storage mode, clusters come back at startup on their surviving containers or volumes
 - **Mocked mode**: clusters reach `Succeeded` at once with a synthetic kubeconfig; no Docker required
 
@@ -453,9 +455,88 @@ components keep working, since the webhooks never see them or give no opinion.
 
 ---
 
+## Workload Identity
+
+### OIDC issuer
+
+`oidcIssuerProfile.enabled` is on for new clusters, as AKS does from Kubernetes 1.34, the oldest version the
+emulator runs ([OIDC issuer][aks-oidc]); `enabled: false` at creation keeps it off, and once on it stays on.
+`issuerURL` is `https://{location}.oic.prod-aks.azure.com/{tenantId}/{uuid}/`, with a uuid generated once per cluster
+and kept ([deploy Workload Identity][aks-wi-deploy]). Clusters stored before round 2 have no issuer until a PUT enables
+it.
+
+The k3s server signs service account tokens under that URL (`service-account-issuer-=`, which k3s prepends so tokens
+issued before stay valid), publishes `{issuerURL}openid/v1/jwks` as its JWKS URL, and follows AKS's token rules: no
+extended expiration and at most 24 hours. Enabling the issuer on an existing cluster replaces its server on the same
+data volume, as AKS restarts its API server. floci-az reads the cluster's JWKS after every reconcile and serves the
+issuer's documents, with the AKS fields (`response_types_supported: ["id_token"]`, `subject_types_supported:
+["public"]`, RS256):
+
+| Where | Path |
+|---|---|
+| The AKS host, when DNS sends `{location}.oic.prod-aks.azure.com` to floci-az | `{issuerURL}.well-known/openid-configuration`, `{issuerURL}openid/v1/jwks` |
+| floci-az's own path | `/_floci/aks/oidc/{location}/{tenantId}/{uuid}/.well-known/openid-configuration` and `.../openid/v1/jwks` |
+
+floci-az's Entra resolves the issuer in-process, so federated credentials verify offline.
+`rotateServiceAccountSigningKeys` is not emulated.
+
+### Enabling it
+
+`securityProfile.workloadIdentity.enabled: true` needs the issuer; without it the PUT fails with `400`
+"Enabling workload identity requires enabling OIDC issuer." (the az CLI checks this client-side; the RP's own error is
+not verified). Then:
+
+1. The upstream azure-workload-identity webhook v1.6.3 runs in `kube-system` as `azure-wi-webhook-controller-manager`,
+   configured by `azure-wi-webhook-config` (`AZURE_TENANT_ID` = the cluster's tenant), as AKS's add-on does
+   ([overview][aks-wi-overview]). Its image is `aks.workload-identity.webhook-image`. Its serving certificate is
+   pre-seeded the way cert-controller generates the ones it keeps, so it is Ready seconds after the cluster (about
+   two minutes otherwise). Pods labelled `azure.workload.identity/use: "true"` under a service account annotated
+   `azure.workload.identity/client-id` get `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_AUTHORITY_HOST`,
+   `AZURE_FEDERATED_TOKEN_FILE` (`/var/run/secrets/azure/wi/<hash>/token/azure-identity-token` from v1.6.1) and the
+   projected token for `api://AzureADTokenExchange`. Which webhook version AKS runs today is not verified.
+2. A selector-less Service `floci-az` in `kube-system` points at floci-az (ports 443 and 80 to floci-az's port, where
+   its TLS proxy tells HTTPS from HTTP), and floci-az's CA is published as the ConfigMap `floci-az-ca` (key
+   `ca.crt`) in `kube-system`.
+3. Pods reach floci-az's Entra over HTTPS, since the Azure SDKs refuse a plain HTTP authority. **floci-az's TLS must
+   be on** (`FLOCI_AZ_TLS_ENABLED=true`). Two modes (`aks.workload-identity.entra-mode`):
+
+| Mode | `AZURE_AUTHORITY_HOST` in pods | What floci-az adds | What the workload does |
+|---|---|---|---|
+| `microsoft-hostnames` (default) | `https://login.microsoftonline.com/`, AKS's value | a `coredns-custom` override (key `floci-az.override`) that answers `login.microsoftonline.com` and the issuer host with the `floci-az` Service; those names in floci-az's certificate; Entra's instance discovery (`common/discovery/instance`) | trusts `floci-az-ca` |
+| `authority` | `https://floci-az.kube-system.svc.cluster.local/`, through an `AzureStackCloud` environment file the webhook reads (`AZURE_ENVIRONMENT_FILEPATH`) | the Service name in floci-az's certificate | trusts `floci-az-ca`, and disables instance discovery in code (azidentity has no environment variable for it) |
+
+Turning Workload Identity off removes the add-on.
+
+The exchange itself: the SDK posts the projected token as `client_assertion` with the identity's client id, and
+floci-az's Entra checks it against the identity's [federated identity credentials](managed-identity.md) and answers
+with an access token for the identity, or Entra's AADSTS codes ([Entra, client assertions](entra.md#client-assertions)).
+For the AKS subject, the credential's `subject` is `system:serviceaccount:<namespace>:<service account>`.
+
+### Trusting floci-az's CA
+
+A projected volume cannot read another namespace, so copy `floci-az-ca` into the workload's namespace and mount it,
+then point the runtime at it: `SSL_CERT_FILE` (Go, OpenSSL, curl), `REQUESTS_CA_BUNDLE` (Python requests),
+`NODE_EXTRA_CA_CERTS` (Node.js), or a Java truststore. floci-az injects nothing into pods itself.
+
+```bash
+kubectl get configmap floci-az-ca -n kube-system -o json \
+  | jq '.metadata = {name: "floci-az-ca"}' | kubectl apply -n my-app -f -
+```
+
+### Networking and limits
+
+- When floci-az runs in a container, the server and the agents join its Docker network, so pods reach it by its
+  address there. When it runs on the host, pods reach `host.docker.internal` (the `host-gateway` entry on Linux).
+- A `coredns-custom` ConfigMap of your own replaces floci-az's override (AKS documents that ConfigMap for your own
+  customizations); keep the `floci-az.override` key in it.
+- Python, .NET, Java and JavaScript SDK behavior against the "Microsoft hostnames" mode is not verified; MSAL Go and
+  azidentity are, and the end-to-end test exchanges the token with curl as the SDKs do.
+
+---
+
 ## Fields stored and echoed
 
-`oidcIssuerProfile`, `securityProfile`, `apiServerAccessProfile`, `addonProfiles`,
+`securityProfile` (except `workloadIdentity`), `apiServerAccessProfile`, `addonProfiles`,
 `autoUpgradeProfile`, `autoScalerProfile`, `linuxProfile`, `windowsProfile`, `workloadAutoScalerProfile`,
 `storageProfile`, `ingressProfile`, `azureMonitorProfile`, `identityProfile`, `httpProxyConfig` and the client ID of
 `servicePrincipalProfile` (never its secret) are stored and returned as sent, with no runtime effect. Pool
@@ -494,6 +575,9 @@ floci-az:
       entra:
         kubeconfig-floci-authority: false
         webhook-cache-ttl-seconds: 5
+      workload-identity:
+        entra-mode: microsoft-hostnames
+        webhook-image: "mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3"
 ```
 
 | Environment Variable | Default | Description |
@@ -509,9 +593,12 @@ floci-az:
 | `FLOCI_AZ_SERVICES_AKS_KEEP_RUNNING_ON_SHUTDOWN` | `false` | Leave the containers running when floci-az stops. Deleting a cluster always removes its containers, volumes and network |
 | `FLOCI_AZ_SERVICES_AKS_ENTRA_KUBECONFIG_FLOCI_AUTHORITY` | `false` | Append `--authority-host <floci-az HTTPS URL>/ --disable-instance-discovery` to the Entra user kubeconfig |
 | `FLOCI_AZ_SERVICES_AKS_ENTRA_WEBHOOK_CACHE_TTL_SECONDS` | `5` | How long API servers cache the token and authorization webhook answers |
+| `FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_ENTRA_MODE` | `microsoft-hostnames` | How Workload Identity pods reach floci-az's Entra: `microsoft-hostnames` or `authority` |
+| `FLOCI_AZ_SERVICES_AKS_WORKLOAD_IDENTITY_WEBHOOK_IMAGE` | `mcr.microsoft.com/oss/v2/azure/workload-identity/webhook:v1.6.3` | The Workload Identity webhook image |
 
 Images pulled in real mode: the k3s tag of each version used, `rancher/local-path-provisioner:v0.0.37`,
-`rancher/mirrored-library-busybox:1.37.0`, and what k3s pulls for itself (CoreDNS, metrics-server, pause).
+`rancher/mirrored-library-busybox:1.37.0`, what k3s pulls for itself (CoreDNS, metrics-server, pause), and for
+Workload Identity clusters the webhook image above.
 
 ---
 
@@ -579,6 +666,9 @@ Checked on 2026-11-10 and 2026-11-11.
 - Entra and Azure RBAC: [control plane authentication][aks-entra], [kubelogin authentication][aks-kubelogin],
   [authorization concepts][aks-authz], [identity concepts (2025 revision)][aks-identity-old], [PIM example][aks-pim];
   kubeguard/guard v0.16.28 [authentication][guard-authn] and [authorization][guard-authz]; kubelogin v0.2.22
+- Workload Identity: [OIDC issuer][aks-oidc], [deploy Workload Identity][aks-wi-deploy], [overview][aks-wi-overview];
+  azure-workload-identity v1.6.3 [`deploy/azure-wi-webhook.yaml`][wi-yaml]; cert-controller v0.16.0
+  [`pkg/rotator/rotator.go`][cert-rotator]; k3s CoreDNS manifest (`/etc/coredns/custom/*.override`)
 
 [spec-mc]: https://github.com/Azure/azure-rest-api-specs/blob/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/managedClusters.json
 [spec-examples]: https://github.com/Azure/azure-rest-api-specs/tree/ebc13f67950a95e50c6828c27dd979e8608c0329/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2026-08-01/examples
@@ -615,3 +705,8 @@ Checked on 2026-11-10 and 2026-11-11.
 [aks-pim]: https://learn.microsoft.com/en-us/azure/aks/privileged-identity-management
 [guard-authn]: https://github.com/kubeguard/guard/blob/v0.16.28/auth/providers/azure/azure.go
 [guard-authz]: https://github.com/kubeguard/guard/blob/v0.16.28/authz/providers/azure/rbac/checkaccessreqhelper.go
+[aks-oidc]: https://learn.microsoft.com/en-us/azure/aks/use-oidc-issuer
+[aks-wi-deploy]: https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster
+[aks-wi-overview]: https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview
+[wi-yaml]: https://github.com/Azure/azure-workload-identity/blob/v1.6.3/deploy/azure-wi-webhook.yaml
+[cert-rotator]: https://github.com/open-policy-agent/cert-controller/blob/v0.16.0/pkg/rotator/rotator.go

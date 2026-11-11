@@ -24,6 +24,7 @@ final class AksClusterRuntime {
 
     static final String WEBHOOK_DIR = "/etc/floci";
     static final String AUTHN_CONFIG = WEBHOOK_DIR + "/aks-authn.yaml";
+    static final String AUTHZ_CONFIG = WEBHOOK_DIR + "/aks-authz.yaml";
     static final String ADMIN_GROUPS_MANIFEST = "floci-aks-admin-groups.yaml";
 
     private final AksClusterManager manager;
@@ -67,6 +68,15 @@ final class AksClusterRuntime {
                     "--kube-apiserver-arg=authentication-token-webhook-version=v1",
                     "--kube-apiserver-arg=authentication-token-webhook-cache-ttl=" + webhookCacheTtlSeconds + "s"));
         }
+        if (azureRbac(cluster)) {
+            args.addAll(List.of(
+                    "--kube-apiserver-arg=authorization-mode=Node,RBAC,Webhook",
+                    "--kube-apiserver-arg=authorization-webhook-config-file=" + AUTHZ_CONFIG,
+                    "--kube-apiserver-arg=authorization-webhook-version=v1",
+                    "--kube-apiserver-arg=authorization-webhook-cache-authorized-ttl=" + webhookCacheTtlSeconds + "s",
+                    "--kube-apiserver-arg=authorization-webhook-cache-unauthorized-ttl=" + webhookCacheTtlSeconds
+                            + "s"));
+        }
         return args;
     }
 
@@ -79,7 +89,19 @@ final class AksClusterRuntime {
         if (cluster.entraEnabled()) {
             files.put(AUTHN_CONFIG, webhookKubeconfig(webhookUrl(cluster, "token-review")));
         }
+        if (azureRbac(cluster)) {
+            files.put(AUTHZ_CONFIG, webhookKubeconfig(webhookUrl(cluster, "subject-access-review")));
+        }
         return files;
+    }
+
+    /**
+     * Azure RBAC: the authorization webhook comes after Node and RBAC, so a Kubernetes RoleBinding still grants what
+     * it grants and the webhook decides only what RBAC has no opinion on, the union AKS describes
+     * ({@code concepts-cluster-authorization.md}).
+     */
+    private static boolean azureRbac(ManagedCluster cluster) {
+        return cluster.entraEnabled() && cluster.getAadProfile().azureRbac();
     }
 
     String webhookUrl(ManagedCluster cluster, String review) {

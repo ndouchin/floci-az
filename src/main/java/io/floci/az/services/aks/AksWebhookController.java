@@ -14,9 +14,10 @@ import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 
 /**
- * {@code POST /_floci/aks/clusters/{instanceId}/token-review}: the authentication webhook a cluster's k3s API server
- * is configured with ({@code authentication-token-webhook-config-file}). Floci-only routes, reached by the cluster,
- * never by Azure clients.
+ * {@code POST /_floci/aks/clusters/{instanceId}/token-review} and {@code .../subject-access-review}: the
+ * authentication and authorization webhooks a cluster's k3s API server is configured with
+ * ({@code authentication-token-webhook-config-file}, {@code authorization-webhook-config-file}). Floci-only routes,
+ * reached by the cluster, never by Azure clients.
  */
 @Path("_floci/aks/clusters/{instanceId}")
 public class AksWebhookController {
@@ -36,6 +37,14 @@ public class AksWebhookController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response tokenReview(@PathParam("instanceId") String instanceId, byte[] body) {
         return Response.ok(webhooks.tokenReview(instanceId, read(body))).build();
+    }
+
+    @POST
+    @Path("subject-access-review")
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response subjectAccessReview(@PathParam("instanceId") String instanceId, byte[] body) {
+        return Response.ok(webhooks.subjectAccessReview(instanceId, read(body))).build();
     }
 
     static JsonNode read(byte[] body) {

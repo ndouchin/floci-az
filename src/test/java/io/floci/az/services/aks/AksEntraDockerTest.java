@@ -24,10 +24,12 @@ import java.util.Map;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * An Entra cluster on real k3s: its API server authenticates Microsoft Entra tokens through floci-az's token webhook.
+ * An Entra cluster on real k3s: its API server authenticates Microsoft Entra tokens through floci-az's token webhook,
+ * binds the admin groups to cluster-admin, and with Azure RBAC authorizes through floci-az's authorization webhook.
  * Skipped when no Docker daemon is reachable.
  */
 @QuarkusTest
@@ -187,5 +189,90 @@ class AksEntraDockerTest {
         updated.then().statusCode(200);
         awaitOperation(updated);
         awaitStatus(403, () -> createNamespace("admin-two"));
+    }
+
+    private static final String AUTH = "/providers/Microsoft.Authorization";
+    private static final String RG_SCOPE = "/subscriptions/" + SUB + "/resourceGroups/" + RG;
+    private static final String DENIED = "User does not have access to the resource in Azure. Update role assignment "
+            + "to allow access.";
+
+    private static void assign(String scope, String name, String role, String principal) {
+        given().contentType("application/json")
+                .body("{\"properties\": {\"roleDefinitionId\": \"/subscriptions/" + SUB + AUTH + "/roleDefinitions/"
+                        + role + "\", \"principalId\": \"" + principal + "\"}}")
+                .put(scope + AUTH + "/roleAssignments/" + name + "?api-version=2022-04-01").then().statusCode(201);
+    }
+
+    private KubeconfigClient admin() throws Exception {
+        return KubeconfigClient.fromBase64(adminKubeconfig);
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("enabling Azure RBAC replaces the server on its volume and keeps the cluster working")
+    void enablingAzureRbac() throws Exception {
+        Response updated = putCluster("{\"managed\": true, \"enableAzureRBAC\": true}");
+        updated.then().statusCode(200);
+        awaitOperation(updated);
+        adminKubeconfig = given().post(CLUSTER_PATH + "/listClusterAdminCredential" + API)
+                .then().statusCode(200).extract().path("kubeconfigs[0].value");
+        assertEquals("ok", admin().text("/readyz"));
+        for (String namespace : new String[]{"ns1", "ns2", "ns3"}) {
+            assertEquals(201, admin().send("POST", "/api/v1/namespaces", "{\"apiVersion\": \"v1\", "
+                    + "\"kind\": \"Namespace\", \"metadata\": {\"name\": \"" + namespace + "\"}}"));
+        }
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("a Reader at a namespace lists its pods, and gets guard's Forbidden elsewhere and on secrets")
+    void aNamespaceReader() throws Exception {
+        assign(CLUSTER_PATH + "/namespaces/ns1", "aaaaaaaa-0000-4000-8000-000000000001",
+                "7f6c6a51-bcf8-42ba-9220-52d62157d7db", EntraStore.DEV_SP_OBJECT_ID);
+        awaitStatus(200, () -> as(servicePrincipalToken()).exchange("GET", "/api/v1/namespaces/ns1/pods", null)
+                .status());
+        KubeconfigClient.Reply other = as(servicePrincipalToken()).exchange("GET", "/api/v1/namespaces/ns2/pods", null);
+        assertEquals(403, other.status(), other.body());
+        assertTrue(other.body().contains(DENIED), other.body());
+        assertEquals(403, as(servicePrincipalToken()).exchange("GET", "/api/v1/namespaces/ns1/secrets", null).status());
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("a Writer at the cluster creates a Deployment")
+    void aClusterWriter() throws Exception {
+        assign(CLUSTER_PATH, "aaaaaaaa-0000-4000-8000-000000000002", "a7ffa36f-339b-4b5c-8bdf-e2c188b2c0eb",
+                EntraStore.DEV_SP_OBJECT_ID);
+        String deployment = """
+                {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "web"},
+                 "spec": {"replicas": 0, "selector": {"matchLabels": {"app": "web"}},
+                          "template": {"metadata": {"labels": {"app": "web"}},
+                                       "spec": {"containers": [{"name": "web",
+                                                                "image": "rancher/mirrored-library-busybox:1.37.0"}]}}}}""";
+        awaitStatus(201, () -> as(servicePrincipalToken()).exchange("POST",
+                "/apis/apps/v1/namespaces/ns1/deployments", deployment).status());
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("a Kubernetes RoleBinding still grants access: RBAC and Azure RBAC are a union")
+    void aRoleBindingStillGrants() throws Exception {
+        assertEquals(403, as(userToken()).exchange("GET", "/api/v1/namespaces/ns3/configmaps", null).status());
+        assertEquals(201, admin().send("POST", "/apis/rbac.authorization.k8s.io/v1/namespaces/ns3/rolebindings", """
+                {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding", "metadata": {"name": "user-view"},
+                 "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "view"},
+                 "subjects": [{"apiGroup": "rbac.authorization.k8s.io", "kind": "User", "name": "%s"}]}"""
+                .formatted(EntraStore.DEV_USER_UPN)));
+        awaitStatus(200, () -> as(userToken()).exchange("GET", "/api/v1/namespaces/ns3/configmaps", null).status());
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("an RBAC Cluster Admin assigned at the resource group deletes a namespace")
+    void aResourceGroupClusterAdmin() throws Exception {
+        assertEquals(403, as(userToken()).exchange("DELETE", "/api/v1/namespaces/ns2", null).status());
+        assign(RG_SCOPE, "aaaaaaaa-0000-4000-8000-000000000003", "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b",
+                EntraStore.DEV_USER_OBJECT_ID);
+        awaitStatus(200, () -> as(userToken()).exchange("DELETE", "/api/v1/namespaces/ns2", null).status());
     }
 }

@@ -211,7 +211,7 @@ class AksDockerTest {
             String name = node.path("metadata").path("name").asText();
             assertTrue(name.matches("aks-(nodepool1|userpool|gpupool)-\\d{8}-vmss00000[01]"), name);
             assertTrue(node.path("spec").path("providerID").asText().startsWith("azure:///subscriptions/" + SUB
-                    + "/resourceGroups/MC_" + RG + "_" + NAME + "_eastus/providers/Microsoft.Compute"
+                    + "/resourceGroups/mc_" + RG + "_" + NAME + "_eastus/providers/Microsoft.Compute"
                     + "/virtualMachineScaleSets/"), node.path("spec").path("providerID").asText());
         }
         JsonNode system = node(nodes, "aks-nodepool1-", "vmss000000");

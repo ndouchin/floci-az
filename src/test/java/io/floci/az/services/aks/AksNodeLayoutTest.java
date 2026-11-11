@@ -52,9 +52,9 @@ class AksNodeLayoutTest {
     }
 
     @Test
-    void theProviderIdNamesTheScaleSetInstance() {
+    void theProviderIdNamesTheScaleSetInstanceWithTheResourceGroupLowercased() {
         ManagedCluster cluster = cluster();
-        assertEquals("azure:///subscriptions/sub1/resourceGroups/MC_rg1_aks1_eastus/providers/Microsoft.Compute"
+        assertEquals("azure:///subscriptions/sub1/resourceGroups/mc_rg1_aks1_eastus/providers/Microsoft.Compute"
                         + "/virtualMachineScaleSets/aks-nodepool1-12345678-vmss/virtualMachines/2",
                 AksNodeLayout.providerId(cluster, pool("nodepool1", "System", 3), "12345678", 2));
     }

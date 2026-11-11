@@ -6,6 +6,7 @@ import io.floci.az.services.aks.AksModels.ManagedCluster;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -39,9 +40,11 @@ final class AksNodeLayout {
         return vmssName(pool, hash) + "0".repeat(Math.max(0, 6 - suffix.length())) + suffix;
     }
 
+    /** The scale set instance's resource ID, its resource group lowercased as the Azure cloud provider writes it. */
     static String providerId(ManagedCluster cluster, AgentPoolProfile pool, String hash, int index) {
         return "azure:///subscriptions/" + cluster.getSubscriptionId() + "/resourceGroups/"
-                + cluster.getNodeResourceGroup() + "/providers/Microsoft.Compute/virtualMachineScaleSets/"
+                + cluster.getNodeResourceGroup().toLowerCase(Locale.ROOT)
+                + "/providers/Microsoft.Compute/virtualMachineScaleSets/"
                 + vmssName(pool.getName(), hash) + "/virtualMachines/" + index;
     }
 

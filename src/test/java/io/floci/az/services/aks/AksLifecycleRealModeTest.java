@@ -266,7 +266,7 @@ class AksLifecycleRealModeTest {
         assertTrue(user.args().contains("--node-label=topology.kubernetes.io/zone=eastus-2"), user.args().toString());
         assertTrue(user.args().contains("--node-taint=dedicated=batch:NoSchedule"), user.args().toString());
         assertTrue(user.args().stream().anyMatch(a -> a.startsWith("--kubelet-arg=provider-id=azure:///subscriptions/"
-                + SUB + "/resourceGroups/MC_rg-lro_pools1_eastus/providers/Microsoft.Compute/virtualMachineScaleSets"
+                + SUB + "/resourceGroups/mc_rg-lro_pools1_eastus/providers/Microsoft.Compute/virtualMachineScaleSets"
                 + "/aks-user-") && a.endsWith("-vmss/virtualMachines/1")), user.args().toString());
         assertEquals(4, user.cpus());
         assertEquals(16L * 1024 * 1024 * 1024, user.memoryBytes());

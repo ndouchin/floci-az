@@ -315,4 +315,52 @@ class AksWorkloadIdentityDockerTest {
         JsonNode plain = admin().get("/api/v1/namespaces/wi/pods/plain").path("spec");
         assertTrue(variables(plain.path("containers").path(0)).isEmpty(), plain.toString());
     }
+
+    private static final String IDENTITY = "/subscriptions/" + SUB + "/resourceGroups/" + RG
+            + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/wi-app";
+    private static final String MSI_API = "?api-version=2024-11-30";
+
+    /** What the Azure SDKs do in a Workload Identity pod: exchange the projected token at the injected authority. */
+    private static final String EXCHANGE = "for i in $(seq 1 30); do "
+            + "curl -s --cacert /ca/ca.crt -d grant_type=client_credentials -d \"client_id=$AZURE_CLIENT_ID\" "
+            + "-d scope=https://vault.azure.net/.default "
+            + "-d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer "
+            + "--data-urlencode \"client_assertion=$(cat $AZURE_FEDERATED_TOKEN_FILE)\" "
+            + "\"${AZURE_AUTHORITY_HOST}${AZURE_TENANT_ID}/oauth2/v2.0/token\" && exit 0; sleep 2; done; exit 1";
+
+    @Test
+    @Order(6)
+    @DisplayName("a pod exchanges its projected token for an access token of the user-assigned identity it federates"
+            + " with, and gets AADSTS700211 once the credential is gone")
+    void endToEnd() throws Exception {
+        JsonNode identity = MAPPER.readTree(given().contentType("application/json").body("{\"location\": \"eastus\"}")
+                .put(IDENTITY + MSI_API).then().statusCode(201).extract().asString()).path("properties");
+        String clientId = identity.path("clientId").asText();
+        String principalId = identity.path("principalId").asText();
+        given().contentType("application/json")
+                .body("{\"properties\": {\"issuer\": \"" + issuer + "\", \"subject\": \"system:serviceaccount:wi:wi-app\", "
+                        + "\"audiences\": [\"api://AzureADTokenExchange\"]}}")
+                .put(IDENTITY + "/federatedIdentityCredentials/wi-app" + MSI_API).then().statusCode(201);
+        assertEquals(201, admin().send("POST", "/api/v1/namespaces/wi/serviceaccounts", MAPPER.writeValueAsString(
+                Map.of("apiVersion", "v1", "kind", "ServiceAccount", "metadata", Map.of("name", "wi-app",
+                        "annotations", Map.of("azure.workload.identity/client-id", clientId))))));
+        JsonNode ca = admin().get("/api/v1/namespaces/kube-system/configmaps/floci-az-ca");
+        assertEquals(201, admin().send("POST", "/api/v1/namespaces/wi/configmaps", MAPPER.writeValueAsString(
+                Map.of("apiVersion", "v1", "kind", "ConfigMap", "metadata", Map.of("name", "floci-az-ca"),
+                        "data", Map.of("ca.crt", ca.path("data").path("ca.crt").asText())))));
+
+        String log = runPod("exchange", EXCHANGE, "wi-app", "wi", true);
+        JsonNode answer = MAPPER.readTree(log.trim());
+        assertTrue(answer.has("access_token"), log);
+        JsonNode claims = decode(answer.path("access_token").asText().split("\\.")[1]);
+        assertEquals(principalId, claims.path("oid").asText(), claims.toString());
+        assertEquals(clientId, claims.path("azp").asText());
+        assertEquals(IDENTITY, claims.path("xms_mirid").asText());
+        assertEquals("https://login.microsoftonline.com/" + TENANT + "/v2.0", claims.path("iss").asText());
+
+        given().delete(IDENTITY + "/federatedIdentityCredentials/wi-app" + MSI_API).then().statusCode(200);
+        String refused = runPod("exchange-refused", EXCHANGE, "wi-app", "wi", true);
+        assertTrue(refused.contains("AADSTS700211"), refused);
+        assertTrue(refused.contains("\"error_codes\":[700211]"), refused);
+    }
 }

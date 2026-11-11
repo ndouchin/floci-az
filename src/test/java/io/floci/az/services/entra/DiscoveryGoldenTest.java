@@ -83,8 +83,12 @@ class DiscoveryGoldenTest {
 
     @ParameterizedTest
     @ValueSource(strings = {TENANT, "common", "organizations"})
-    void v1DiscoveryPathServesTheSameDocument(String segment) throws Exception {
-        assertEquals(expectedDocument(segment), fetch("/" + segment + "/.well-known/openid-configuration"));
+    void v1DiscoveryPathReportsTheV1Issuer(String segment) throws Exception {
+        // Real Entra's v1 document names the v1 issuer (https://sts.windows.net/{tid}/); go-oidc, which AKS's
+        // token webhook uses, requires that issuer to equal the URL the document was fetched under.
+        Map<String, Object> expected = expectedDocument(segment);
+        expected.put("issuer", baseUrl() + "/" + segment + "/");
+        assertEquals(expected, fetch("/" + segment + "/.well-known/openid-configuration"));
     }
 
     @Test

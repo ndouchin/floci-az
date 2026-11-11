@@ -35,10 +35,12 @@ public class IssuerFactory {
     /**
      * The {@code issuer} a discovery document reports for the tenant segment it was requested
      * under. An explicit issuer must match the tokens. Without one, it echoes the segment
-     * (so {@code /common} reports {@code .../common/v2.0}) for msal4j's authority validation.
+     * (so {@code /common} reports {@code .../common/v2.0}) for msal4j's authority validation, and the
+     * v1.0 document reports the v1.0 issuer {@code {base}/{segment}/}, as real Entra's names
+     * {@code https://sts.windows.net/{tenant}/}.
      */
-    public String discoveryIssuer(String baseUrl, String tenantSegment) {
-        return issuer(baseUrl, tenantSegment, true);
+    public String discoveryIssuer(String baseUrl, String tenantSegment, boolean v2) {
+        return issuer(baseUrl, tenantSegment, v2);
     }
 
     /** The login host that {@code error_uri} links point to. */

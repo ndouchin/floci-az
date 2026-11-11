@@ -153,11 +153,15 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
 
     /** Records written before a profile was typed kept it among their echoed properties: type it now. */
     void migrateEchoedProfiles() {
+        String tenant = config.services().entra().defaultTenantId();
         for (ArmResourceStore.Stored<ManagedCluster> stored : store.all()) {
-            if (stored.value().getEchoedProperties() != null
-                    && stored.value().getEchoedProperties().containsKey("aadProfile")) {
+            Map<String, Object> echoed = stored.value().getEchoedProperties();
+            if (echoed != null && (echoed.containsKey("aadProfile") || echoed.containsKey("oidcIssuerProfile")
+                    || echoed.get("securityProfile") instanceof Map<?, ?> security
+                    && security.containsKey("workloadIdentity"))) {
                 store.update(stored.id(), cluster -> {
                     AksEntra.migrate(cluster);
+                    AksWorkloadIdentity.migrate(cluster, tenant);
                     return cluster;
                 });
             }
@@ -417,6 +421,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (props.hasNonNull("aadProfile")) {
             cluster.setAadProfile(AksEntra.apply(cluster.getAadProfile(), props.path("aadProfile"), tenantOf(req)));
         }
+        AksWorkloadIdentity.apply(cluster, exists, props, tenantOf(req));
         cluster.setEchoedProperties(echoedProperties(cluster.getEchoedProperties(), props));
 
         if (!exists && poolRequests.isEmpty()) {
@@ -1182,6 +1187,13 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
         if (cluster.getAadProfile() != null) {
             props.put("aadProfile", AksEntra.toArm(cluster.getAadProfile()));
         }
+        props.put("oidcIssuerProfile", AksWorkloadIdentity.issuerProfile(cluster));
+        Object echoedSecurity = cluster.getEchoedProperties() == null ? null
+                : cluster.getEchoedProperties().get("securityProfile");
+        Map<String, Object> security = AksWorkloadIdentity.securityProfile(cluster, echoedSecurity);
+        if (!security.isEmpty()) {
+            props.put("securityProfile", security);
+        }
         if (cluster.getNetworkProfile() != null) {
             props.put("networkProfile", networkProfileProperties(cluster.getNetworkProfile()));
         }
@@ -1287,7 +1299,7 @@ public class AksHandler implements AzureServiceHandler, Resettable, ResourceInde
      */
     private static Map<String, Object> echoedProperties(Map<String, Object> previous, JsonNode props) {
         Map<String, Object> echoed = previous == null ? new LinkedHashMap<>() : new LinkedHashMap<>(previous);
-        for (String field : List.of("oidcIssuerProfile", "securityProfile", "apiServerAccessProfile",
+        for (String field : List.of("securityProfile", "apiServerAccessProfile",
                 "addonProfiles", "autoUpgradeProfile", "autoScalerProfile", "linuxProfile", "windowsProfile",
                 "workloadAutoScalerProfile", "storageProfile", "ingressProfile", "azureMonitorProfile",
                 "identityProfile", "httpProxyConfig")) {

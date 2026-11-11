@@ -33,6 +33,12 @@ public class AksModels {
         private String nodeResourceGroup;
         private Boolean disableLocalAccounts;
         private AadProfile aadProfile;
+        /** {@code oidcIssuerProfile.enabled}; null for a record from before it was typed, which has no issuer. */
+        private Boolean oidcIssuerEnabled;
+        /** The issuer URL, generated once with the cluster's OIDC key and kept for good. */
+        private String oidcIssuerUrl;
+        /** {@code securityProfile.workloadIdentity.enabled}. */
+        private Boolean workloadIdentityEnabled;
         private NetworkProfile networkProfile;
         /** Request objects the emulator stores and echoes without acting on them (aadProfile, oidcIssuerProfile...). */
         private Map<String, Object> echoedProperties;
@@ -106,6 +112,25 @@ public class AksModels {
 
         public AadProfile getAadProfile() { return aadProfile; }
         public void setAadProfile(AadProfile aadProfile) { this.aadProfile = aadProfile; }
+
+        public Boolean getOidcIssuerEnabled() { return oidcIssuerEnabled; }
+        public void setOidcIssuerEnabled(Boolean oidcIssuerEnabled) { this.oidcIssuerEnabled = oidcIssuerEnabled; }
+
+        public String getOidcIssuerUrl() { return oidcIssuerUrl; }
+        public void setOidcIssuerUrl(String oidcIssuerUrl) { this.oidcIssuerUrl = oidcIssuerUrl; }
+
+        public Boolean getWorkloadIdentityEnabled() { return workloadIdentityEnabled; }
+        public void setWorkloadIdentityEnabled(Boolean workloadIdentityEnabled) {
+            this.workloadIdentityEnabled = workloadIdentityEnabled;
+        }
+
+        public boolean oidcIssuerEnabled() {
+            return Boolean.TRUE.equals(oidcIssuerEnabled) && oidcIssuerUrl != null;
+        }
+
+        public boolean workloadIdentityEnabled() {
+            return Boolean.TRUE.equals(workloadIdentityEnabled) && oidcIssuerEnabled();
+        }
 
         /** Whether managed Microsoft Entra integration is on. */
         public boolean entraEnabled() {

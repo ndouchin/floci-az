@@ -104,6 +104,19 @@ class AroClusterManagerTest {
     }
 
     @Test
+    void aLoopbackDaemonAddressIsReachedAsLocalhostWhichTheApiCertificateNames() {
+        lenient().when(lifecycleManager.publishedEndpoints()).thenReturn(true);
+        lenient().when(lifecycleManager.daemonHost()).thenReturn("127.0.0.1");
+        lenient().when(lifecycleManager.daemonAddress()).thenReturn("127.0.0.1");
+        OpenShiftCluster cluster = startableCluster();
+
+        startableManager().startCluster(cluster);
+
+        assertEquals("https://localhost:7600", cluster.getEndpoint());
+        assertEquals("127.0.0.1", cluster.getPublicIp());
+    }
+
+    @Test
     void restoringAdoptsASurvivingContainerAndItsPublishedPorts() {
         OpenShiftCluster cluster = startableCluster();
         cluster.setContainerId("old");
@@ -198,6 +211,16 @@ class AroClusterManagerTest {
         assertTrue(manager().settings(cluster, "floci-az-aro-1").azureFileClass());
         cluster.getProperties().put("platformWorkloadIdentityProfile", Map.of("platformWorkloadIdentities", Map.of()));
         assertFalse(manager().settings(cluster, "floci-az-aro-1").azureFileClass());
+    }
+
+    @Test
+    void theKubeconfigIsTheGenericOneForLocalhostAndThePerNameOneOtherwise() {
+        assertEquals("/var/lib/microshift/resources/kubeadmin/kubeconfig",
+                AroClusterManager.kubeconfigPath("https://localhost:7600"));
+        assertEquals("/var/lib/microshift/resources/kubeadmin/floci-az-aro-1a2b3c4d/kubeconfig",
+                AroClusterManager.kubeconfigPath("https://floci-az-aro-1a2b3c4d:6443"));
+        assertEquals("/var/lib/microshift/resources/kubeadmin/192.168.5.2/kubeconfig",
+                AroClusterManager.kubeconfigPath("https://192.168.5.2:7600"));
     }
 
     @Test

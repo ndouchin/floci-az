@@ -253,9 +253,7 @@ public class AroClusterManager {
         oc(containerId, "oc", "patch", "ingress.config.openshift.io", "cluster", "--subresource=status",
                 "--type=merge", "-p", AroManifests.ingressStatus());
 
-        String host = URI.create(cluster.getEndpoint()).getHost();
-        String path = "localhost".equals(host) ? KUBEADMIN_DIR + "/kubeconfig" : KUBEADMIN_DIR + "/" + host
-                + "/kubeconfig";
+        String path = kubeconfigPath(cluster.getEndpoint());
         ExecResult kubeconfig = lifecycleManager.execInContainer(containerId, "cat", path);
         if (kubeconfig.exitCode() != 0 || !kubeconfig.output().contains("server:")) {
             throw new IllegalStateException("no kubeconfig at " + path + ": " + kubeconfig.output().strip());
@@ -302,6 +300,12 @@ public class AroClusterManager {
         return ContainerStorageHelper.dockerName(config, "aro-" + cluster.getInstanceId());
     }
 
+    /** The admin kubeconfig MicroShift writes for the endpoint's host: the generic one for localhost, else its own. */
+    static String kubeconfigPath(String endpoint) {
+        String host = URI.create(endpoint).getHost();
+        return "localhost".equals(host) ? KUBEADMIN_DIR + "/kubeconfig" : KUBEADMIN_DIR + "/" + host + "/kubeconfig";
+    }
+
     /** ARO names its first master {@code <infraID>-master-0}; masters and workers are one node here. */
     static String nodeName(OpenShiftCluster cluster) {
         return cluster.getInfraId() + "-master-0";
@@ -346,7 +350,10 @@ public class AroClusterManager {
 
     private void applyEndpoints(OpenShiftCluster cluster, String containerName, ContainerInfo info) {
         if (lifecycleManager.publishedEndpoints()) {
-            cluster.setEndpoint("https://" + lifecycleManager.daemonHost() + ":" + cluster.getApiHostPort());
+            // MicroShift's loopback certificate names localhost only, and it refuses loopback extra names.
+            String host = "127.0.0.1".equals(lifecycleManager.daemonAddress()) ? "localhost"
+                    : lifecycleManager.daemonHost();
+            cluster.setEndpoint("https://" + host + ":" + cluster.getApiHostPort());
             cluster.setInternalEndpoint(cluster.getEndpoint());
             cluster.setPublicIp(ipOf(lifecycleManager.daemonAddress()));
         } else if (containerDetector.isRunningInContainer()) {

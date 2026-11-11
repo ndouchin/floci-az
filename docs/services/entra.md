@@ -254,10 +254,44 @@ both get a token, and the first unregistered `client_id` is logged once at `WARN
 
 The secret may be sent in the form (`client_secret_post`) or in an HTTP Basic header
 (`client_secret_basic`). The `password` and `authorization_code` grants need no secret, only a
-registered `client_id`. A `client_assertion` is accepted without verification. User passwords
+registered `client_id`. A `client_assertion` is accepted without verification, except for the
+clients described under [Client assertions](#client-assertions). User passwords
 are checked separately only when `validate-user-credentials` is enabled. The seeded dev app
 (`11111111-...` with `floci-az-dev-secret`) is registered, so it keeps working. Secrets are stored as salted
 PBKDF2-HMAC-SHA256 hashes, never in plaintext.
+
+## Client assertions
+
+A `client_assertion` whose `client_id` is a user-assigned managed identity's client id is always
+verified against the identity's [federated identity credentials](managed-identity.md), whatever
+`validate-client-credentials` says, as Workload Identity's exchange is
+([workload identity federation][wif]). `issuer`, `subject` (or a `claimsMatchingExpression` of the form
+`claims['sub'] matches '<pattern with *>'`) and `audience` must match one credential case-sensitively, the
+assertion must be RS256-signed by the issuer's keys and within its lifetime (5 minutes of skew):
+
+| Mismatch | Answer |
+|---|---|
+| no `iss` or no `sub` | `400` `invalid_request`, `AADSTS70021` |
+| `iss` matches no credential (also when the identity has none) | `400` `invalid_client`, `AADSTS700211` |
+| `sub` matches no credential of that issuer | `400` `invalid_client`, `AADSTS700213` |
+| `aud` matches none of those credentials | `400` `invalid_client`, `AADSTS700212` |
+| the issuer's keys are unknown | `400` `invalid_request`, `AADSTS90061` |
+| the signature does not verify | `400` `invalid_client`, `AADSTS700027` |
+| outside its lifetime | `400` `invalid_client`, `AADSTS700024` |
+| not a JWT | `400` `invalid_request`, `AADSTS50027` |
+
+Issuer keys are resolved in-process: an AKS cluster's OIDC issuer (see [AKS Workload Identity](aks.md))
+verifies offline, and an issuer the emulator does not run is never fetched. The token is shaped like the
+ones IMDS mints for the identity: `oid` and `sub` are its principal id, `appid` or `azp` its client id,
+`idtyp: app`, `xms_mirid` its ARM id. The messages of 700211 and 700213 are Entra's
+([breaking changes][entra-breaking], [IoT Operations known issues][iot-known]); the message of 700212, the
+code for an expired assertion, the HTTP statuses and the `error` values other than 70021's are not verified.
+Unknown client ids keep the permissive path. Application registrations have no federated credentials in the
+emulator, so their assertions stay unverified.
+
+[wif]: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation
+[entra-breaking]: https://learn.microsoft.com/en-us/entra/identity-platform/reference-breaking-changes
+[iot-known]: https://learn.microsoft.com/en-us/azure/iot-operations/troubleshoot/known-issues
 
 Tenants: `common`, `organizations` and `consumers` act in the default tenant. Any other tenant id
 is accepted as it is and served from the default tenant's directory, so the dev app authenticates

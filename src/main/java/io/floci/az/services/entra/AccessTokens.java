@@ -35,10 +35,10 @@ public class AccessTokens {
                 userOid, userOid, request.appId(), scp, version, null, request.lifetimeSeconds()), claims);
     }
 
-    /** An app-only token for the client's service principal. */
+    /** An app-only token for the client's service principal, or for the managed identity it federates as. */
     public String app(TokenRequest request, String audience) {
         String version = request.accessTokenVersion(audience);
-        Map<String, Object> claims = new LinkedHashMap<>();
+        Map<String, Object> claims = new LinkedHashMap<>(request.clientClaims());
         putGroups(claims, request, audience, request.clientObjectId());
         return issuer.issue(new TokenIssuer.TokenSpec(request.tenantId(), request.accessTokenIssuer(audience), audience,
                 request.clientObjectId(), request.clientObjectId(), request.appId(), null, version, "app",

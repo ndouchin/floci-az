@@ -51,6 +51,23 @@ public enum AadstsError {
                     + "for your app or consider using certificate credentials for added security."),
     MISSING_CLIENT_CREDENTIAL(7000218, "invalid_client", 401,
             "The request body must contain the following parameter: 'client_assertion' or 'client_secret'."),
+    ASSERTION_MALFORMED(50027, "invalid_request", 400, "JWT token is invalid or malformed."),
+    FEDERATED_NO_MATCH(70021, "invalid_request", 400,
+            "No matching federated identity record found for presented assertion. Assertion Issuer: '%s'. "
+                    + "Assertion Subject: '%s'. Assertion Audience: '%s'."),
+    FEDERATED_ISSUER_MISMATCH(700211, "invalid_client", 400,
+            "No matching federated identity record found for presented assertion issuer '%s'. Please check your "
+                    + "federated identity credential Subject, Audience and Issuer against the presented assertion."),
+    FEDERATED_AUDIENCE_MISMATCH(700212, "invalid_client", 400,
+            "No matching federated identity record found for presented assertion audience '%s'. Please check your "
+                    + "federated identity credential Subject, Audience and Issuer against the presented assertion."),
+    FEDERATED_SUBJECT_MISMATCH(700213, "invalid_client", 400,
+            "No matching federated identity record found for presented assertion subject '%s'. Please note that "
+                    + "matching is done using a case-sensitive comparison. Check your federated identity credential "
+                    + "Subject, Audience, and Issuer against the presented assertion."),
+    ASSERTION_SIGNATURE_INVALID(700027, "invalid_client", 400, "Client assertion failed signature validation."),
+    ASSERTION_OUT_OF_TIME_RANGE(700024, "invalid_client", 400, "Client assertion is not within its valid time range."),
+    EXTERNAL_OIDC_UNREACHABLE(90061, "invalid_request", 400, "Request to External OIDC endpoint failed."),
     SERIALISATION_FAILED(50000, "server_error", 500, "serialisation failed");
 
     private final int code;

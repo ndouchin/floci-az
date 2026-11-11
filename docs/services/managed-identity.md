@@ -20,7 +20,26 @@ applications use to acquire tokens without secrets.
   `400 FailedIdentityOperation` and stores nothing; a null entry, which removes an identity, needs no
   existing identity
 - **Federated identity credentials**: CreateOrUpdate, Get, Delete, List with
-  `issuer` / `subject` / `audiences` (as used by `azurerm_federated_identity_credential`)
+  `issuer` / `subject` / `audiences` (as used by `azurerm_federated_identity_credential`), with
+  Entra's rules and messages ([considerations][fic-considerations], [configuration][fic-config]):
+
+  | Request | Answer |
+  |---|---|
+  | name outside 3 to 120 alphanumerics, dashes and underscores, first alphanumeric | `400` "Federated Identity Credential name '{ficName}' is invalid." |
+  | not exactly one audience | `400` "Federated identity credentials must have exactly one audience." |
+  | `issuer`, or both `subject` and `claimsMatchingExpression`, missing | `400` "Federated Identity Credential from HTTP body has empty properties" |
+  | the identity does not exist | `404` "The parent user-assigned identity doesn't exist." |
+  | an `issuer` and `subject` pair another credential of the identity holds | `400` "Issuer and subject combination already exists for this Managed Identity." |
+  | a 21st credential | `400` (emulator wording: the limit of 20 is documented, the message is not) |
+
+  From `2025-01-31-preview`, `claimsMatchingExpression` (`value`, `languageVersion`) may replace
+  `subject`, never next to it ("Either 'subject' or 'claimsMatchingExpression' must be defined, but
+  not both."). The error codes (`BadRequest`, `ResourceNotFound`) are not documented; only the
+  statuses and messages are. `description` belongs to application credentials and is not in the
+  managed identity API.
+- **Token exchange**: a client credentials request whose `client_id` is an identity's client id and
+  whose `client_assertion` matches one of its credentials gets a token for the identity, as Workload
+  Identity's exchange does; see [Entra, client assertions](entra.md#client-assertions)
 - **System-assigned identity read**: `GET {scope}/providers/Microsoft.ManagedIdentity/identities/default`
   returns deterministic per-scope GUIDs
 - **IMDS token endpoint**: `GET /metadata/identity/oauth2/token` (imds spec `2023-07-01`):
@@ -224,7 +243,9 @@ Token tenant, issuer, and lifetime follow the [Entra ID](entra.md) settings
   URL for `identities/default`; the emulator returns a placeholder URL under the emulator base.
 - **Any `api-version` is accepted** on both planes; real IMDS rejects unknown versions.
 - **`isolationScope` is not modeled** on user-assigned identities.
-- **Federated identity credentials are CRUD-only**: no token-exchange semantics.
+- **Federated credential issuers are resolved in-process only**: an assertion verifies when its
+  issuer is one the emulator runs (an AKS cluster's OIDC issuer); any other issuer answers
+  `AADSTS90061`, as an unreachable discovery endpoint does.
 - **Unknown identities return** `400 {"error":"invalid_request","error_description":"Identity not found"}`,
   matching real IMDS behavior for unassigned user identities.
 - **The system-assigned IMDS identity is not tied to a caller resource**: on real Azure, IMDS
@@ -240,3 +261,6 @@ Token tenant, issuer, and lifetime follow the [Entra ID](entra.md) settings
 - **Resource-group deletion does not cascade**: deleting a resource group leaves its identities
   behind (consistent with the other ARM resources in the emulator). Identities do appear in
   `GET .../resourceGroups/{rg}/resources`, so `prevent_deletion_if_contains_resources` works.
+
+[fic-considerations]: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-considerations
+[fic-config]: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust-user-assigned-managed-identity

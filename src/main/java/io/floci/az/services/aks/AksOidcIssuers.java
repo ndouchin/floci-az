@@ -3,6 +3,7 @@ package io.floci.az.services.aks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.floci.az.services.aks.AksModels.ManagedCluster;
+import io.floci.az.services.entra.OidcIssuerKeys;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -19,7 +20,7 @@ import java.util.Optional;
  * floci's EKS does for IRSA; outside verifiers read the same documents on the AKS host or on floci-az's own path.
  */
 @ApplicationScoped
-public class AksOidcIssuers {
+public class AksOidcIssuers implements OidcIssuerKeys {
 
     private static final Logger LOG = Logger.getLogger(AksOidcIssuers.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -29,6 +30,11 @@ public class AksOidcIssuers {
     @Inject
     public AksOidcIssuers(AksHandler clusters) {
         this.clusters = clusters;
+    }
+
+    @Override
+    public Optional<JsonNode> jwks(String issuer) {
+        return cluster(issuer).filter(cluster -> cluster.getServiceAccountJwks() != null).map(AksOidcIssuers::jwks);
     }
 
     /** The cluster whose issuer is {@code issuer}, compared with and without a trailing slash. */
